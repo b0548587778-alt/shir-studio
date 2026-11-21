@@ -1,0 +1,40 @@
+name: build-windows
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      APP_VERSION: "0.1.${{ github.run_number }}"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller==6.11.1 pytest
+      - name: Tests
+        run: python -m pytest -q tests
+      - name: Build exe
+        run: pyinstaller --noconfirm --windowed --name ShirStudio --exclude-module tkinter run.py
+      - name: Self test of built exe
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath dist\ShirStudio\ShirStudio.exe -ArgumentList "--selftest" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "selftest failed" }
+          if (-not (Test-Path "$env:TEMP\shir_selftest.mp3")) { throw "no output" }
+      - name: Build installer
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\ShirStudio.iss'
+      - name: Publish download
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest -y --cleanup-tag || true
+          gh release create latest dist/ShirStudio-Setup.exe --title "גרסה $APP_VERSION" --notes "קובץ התקנה לווינדוס" --latest
