@@ -1,0 +1,22 @@
+{
+  "name": "ניגון שקט עם פסנתר",
+  "description": "פסנתר רך ומיתרים ברקע",
+  "order": 2,
+  "reverb": 0.3,
+  "accomp_db": -6,
+  "tracks": [
+    {"instrument": "piano", "octave": 3, "volume": 1.0, "pan": -0.1,
+     "bar": [{"t": 0, "d": 2, "n": "root_low", "v": 0.55}, {"t": 0.5, "d": 1.5, "n": "fifth", "v": 0.4},
+             {"t": 1, "d": 1, "n": "octave", "v": 0.45}, {"t": 1.5, "d": 0.5, "n": "third_hi", "v": 0.4},
+             {"t": 2, "d": 2, "n": "root_low", "v": 0.5}, {"t": 2.5, "d": 1.5, "n": "fifth", "v": 0.4},
+             {"t": 3, "d": 1, "n": "octave", "v": 0.45}, {"t": 3.5, "d": 0.5, "n": "fifth_hi", "v": 0.35}]},
+    {"instrument": "strings", "octave": 4, "volume": 0.35, "pan": 0.2,
+     "bar": [{"t": 0, "d": 4, "n": "chord", "v": 0.4}]}
+  ],
+  "free": [
+    {"instrument": "piano", "octave": 3, "volume": 1.0, "pan": -0.1,
+     "seg": [{"t": 0, "d": "seg", "n": "root_low", "v": 0.55}, {"t": 0.12, "d": "seg", "n": "fifth", "v": 0.45},
+             {"t": 0.24, "d": "seg", "n": "octave", "v": 0.45}, {"t": 0.36, "d": "seg", "n": "third_hi", "v": 0.4}]},
+    {"instrument": "strings", "octave": 4, "volume": 0.4, "pan": 0.2, "seg": [{"t": 0, "d": "seg", "n": "chord", "v": 0.4}]}
+  ]
+}

@@ -42,11 +42,12 @@ def save(path: str, data: np.ndarray) -> None:
         if path.lower().endswith(".mp3"):
             import lameenc
             enc = lameenc.Encoder()
-            enc.set_bit_rate(192)
+            enc.set_bit_rate(256)
             enc.set_in_sample_rate(SR)
-            enc.set_channels(1)
+            ch = 1 if data.ndim == 1 else data.shape[1]
+            enc.set_channels(ch)
             enc.set_quality(2)
-            pcm = (data * 32767).astype("<i2").tobytes()
+            pcm = (data * 32767).astype("<i2").tobytes()   # שורות = דגימות, משולב ערוצים
             with open(path, "wb") as f:
                 f.write(enc.encode(pcm) + enc.flush())
         else:

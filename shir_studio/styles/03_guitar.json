@@ -1,0 +1,21 @@
+{
+  "name": "גיטרה רגועה",
+  "description": "גיטרה בפריטה עדינה ובס רך",
+  "order": 3,
+  "reverb": 0.22,
+  "accomp_db": -5,
+  "tracks": [
+    {"instrument": "guitar", "octave": 3, "volume": 1.0, "pan": -0.15,
+     "bar": [{"t": 0, "d": 2, "n": "root_low", "v": 0.7}, {"t": 0.5, "d": 1, "n": "third", "v": 0.5},
+             {"t": 1, "d": 1, "n": "fifth", "v": 0.5}, {"t": 1.5, "d": 1, "n": "octave", "v": 0.5},
+             {"t": 2, "d": 2, "n": "fifth_low", "v": 0.65}, {"t": 2.5, "d": 1, "n": "third", "v": 0.5},
+             {"t": 3, "d": 1, "n": "fifth", "v": 0.5}, {"t": 3.5, "d": 1, "n": "octave", "v": 0.5}]},
+    {"instrument": "bass", "octave": 2, "volume": 0.45, "pan": 0,
+     "bar": [{"t": 0, "d": 1.8, "n": "root", "v": 0.5}, {"t": 2, "d": 1.8, "n": "fifth_low", "v": 0.45}]}
+  ],
+  "free": [
+    {"instrument": "guitar", "octave": 3, "volume": 1.0, "pan": -0.15,
+     "seg": [{"t": 0, "d": "seg", "n": "chord", "v": 0.7, "strum": 0.03}]},
+    {"instrument": "bass", "octave": 2, "volume": 0.4, "pan": 0, "seg": [{"t": 0, "d": "seg", "n": "root", "v": 0.5}]}
+  ]
+}

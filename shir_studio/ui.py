@@ -7,13 +7,14 @@ import numpy as np
 from PySide6.QtCore import Qt, QThread, Signal, QTimer, QStandardPaths
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-    QStackedWidget, QProgressBar, QFileDialog, QMessageBox,
+    QStackedWidget, QProgressBar, QFileDialog, QMessageBox, QGridLayout, QButtonGroup,
 )
 
 from . import APP_NAME
 from .audio.fileio import load, save, AudioError, SR
 from .audio.devices import Recorder, Player
-from .audio.denoise import denoise
+from .pipeline import Song
+from .music.styles import load_styles
 from .log import log_error
 
 STYLE = """
@@ -31,6 +32,9 @@ QPushButton#red:hover { background: #cc3d33; }
 QPushButton#green { background: #2c7a3f; }
 QPushButton#green:hover { background: #369249; }
 QPushButton#light { background: #dfe5ec; color: #24466b; }
+QPushButton#style { background: white; color: #1d2733; border: 3px solid #c9d2dc; font-size: 24px;
+                    min-height: 95px; text-align: center; padding: 8px; }
+QPushButton#style:checked { border: 4px solid #2c7a3f; background: #e6f3e9; }
 QProgressBar { border: 2px solid #24466b; border-radius: 14px; height: 40px; text-align: center;
                font-size: 22px; background: white; }
 QProgressBar::chunk { background: #2c7a3f; border-radius: 12px; }
@@ -56,6 +60,7 @@ def label(text, name=None):
 
 class Worker(QThread):
     progress = Signal(int)
+    message = Signal(str)
     finished_ok = Signal(object)
     failed = Signal(str)
 
@@ -65,7 +70,11 @@ class Worker(QThread):
 
     def run(self):
         try:
-            self.finished_ok.emit(self.fn(self.progress.emit))
+            def report(p, msg=None):
+                self.progress.emit(int(p))
+                if msg:
+                    self.message.emit(msg)
+            self.finished_ok.emit(self.fn(report))
         except AudioError as e:
             self.failed.emit(str(e))
         except Exception:
@@ -85,14 +94,18 @@ class MainWindow(QMainWindow):
         self.original = None
         self.result = None
         self.worker = None
+        self.song = None
+        self.styles = load_styles()
+        self.style_index = 0
 
         self.stack = QStackedWidget()
         self.setCentralWidget(self.stack)
         self.home = self._build_home()
         self.rec = self._build_record()
+        self.style_page = self._build_styles()
         self.work = self._build_work()
         self.done = self._build_done()
-        for w in (self.home, self.rec, self.work, self.done):
+        for w in (self.home, self.rec, self.style_page, self.work, self.done):
             self.stack.addWidget(w)
 
         self.timer = QTimer(self)
@@ -145,10 +158,42 @@ class MainWindow(QMainWindow):
         v.addLayout(h)
         return w
 
+    def _build_styles(self):
+        w, v = self._page()
+        v.addWidget(label("בחר סגנון ליווי", "title"))
+        grid = QGridLayout()
+        grid.setSpacing(16)
+        self.style_group = QButtonGroup(self)
+        self.style_group.setExclusive(True)
+        for i, st in enumerate(self.styles):
+            b = QPushButton(f"{st['name']}\n{st.get('description', '')}")
+            b.setObjectName("style")
+            b.setCheckable(True)
+            b.setCursor(Qt.PointingHandCursor)
+            b.setStyleSheet("QPushButton#style { font-size: 22px; }")
+            self.style_group.addButton(b, i)
+            grid.addWidget(b, i // 2, i % 2)
+            if i == 0:
+                b.setChecked(True)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
+        v.addLayout(grid)
+        v.addStretch()
+        h = QHBoxLayout()
+        go = big_button("✨  הכן את השיר", "green")
+        go.setMinimumHeight(100)
+        go.clicked.connect(self.make_song)
+        back = big_button("חזרה", "light")
+        back.clicked.connect(self.go_home)
+        h.addWidget(go, 3); h.addWidget(back, 1)
+        v.addLayout(h)
+        return w
+
     def _build_work(self):
         w, v = self._page()
         v.addStretch()
-        v.addWidget(label("מכין את השיר...", "title"))
+        self.work_title = label("מכין את השיר...", "title")
+        v.addWidget(self.work_title)
         v.addWidget(label("זה ייקח רגע. אין צורך ללחוץ על כלום.", "hint"))
         self.bar = QProgressBar()
         self.bar.setRange(0, 100)
@@ -160,7 +205,8 @@ class MainWindow(QMainWindow):
     def _build_done(self):
         w, v = self._page()
         v.addWidget(label("השיר מוכן! ✔", "title"))
-        v.addWidget(label("לחץ כדי להאזין ולהשוות", "hint"))
+        self.done_hint = label("לחץ כדי להאזין ולהשוות", "hint")
+        v.addWidget(self.done_hint)
         b_res = big_button("▶  האזן לשיר המוכן", "green")
         b_res.setMinimumHeight(90)
         b_res.clicked.connect(lambda: self._play(self.result))
@@ -168,7 +214,11 @@ class MainWindow(QMainWindow):
         b_org.clicked.connect(lambda: self._play(self.original))
         b_stop = big_button("⏹  עצור השמעה", "light")
         b_stop.clicked.connect(self.player.stop)
-        v.addWidget(b_res); v.addWidget(b_org); v.addWidget(b_stop)
+        b_other = big_button("🎵  נסה סגנון ליווי אחר", "light")
+        b_other.clicked.connect(self.choose_style)
+        h2 = QHBoxLayout()
+        h2.addWidget(b_org); h2.addWidget(b_stop)
+        v.addWidget(b_res); v.addLayout(h2); v.addWidget(b_other)
         v.addStretch()
         h = QHBoxLayout()
         b_save = big_button("💾  שמור", None)
@@ -248,17 +298,33 @@ class MainWindow(QMainWindow):
 
     def process(self, data):
         self.original = data
+        self.song = Song(data)
+        self.choose_style()
+
+    def choose_style(self):
+        self.player.stop()
+        self.stack.setCurrentWidget(self.style_page)
+
+    def make_song(self):
+        st = self.styles[max(0, self.style_group.checkedId())]
         self.bar.setValue(0)
+        self.work_title.setText("מכין את השיר...")
         self.stack.setCurrentWidget(self.work)
-        self.worker = Worker(lambda p: denoise(data, progress=p))
+        song = self.song
+        self.worker = Worker(lambda p: song.make(st, p))
         self.worker.progress.connect(self.bar.setValue)
-        self.worker.finished_ok.connect(self._processed)
+        self.worker.message.connect(self.work_title.setText)
+        self.worker.finished_ok.connect(lambda r: self._processed(r, st))
         self.worker.failed.connect(lambda m: (self.error(m), self.go_home()))
         self.worker.start()
 
-    def _processed(self, result):
+    def _processed(self, result, st):
         self.result = result
         self.bar.setValue(100)
+        hint = f"סגנון: {st['name']}"
+        if not self.song.info()["steady"]:
+            hint += "\nהשיר מושר בקצב חופשי, לכן הליווי רך ובלי תופים."
+        self.done_hint.setText(hint)
         self.stack.setCurrentWidget(self.done)
 
     def _play(self, data):

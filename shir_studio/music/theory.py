@@ -1,0 +1,57 @@
+"""סולמות ואקורדים - כולל סולם 'אהבה רבה' (פריגיש) הנפוץ בניגונים חסידיים."""
+import numpy as np
+
+NOTE_NAMES = ["דו", "דו#", "רה", "מי♭", "מי", "פה", "פה#", "סול", "סול#", "לה", "סי♭", "סי"]
+
+# פרופילי קרומהנסל-קסלר
+MAJOR_P = np.array([6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88])
+MINOR_P = np.array([6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17])
+AHAVA_P = np.array([6.30, 4.20, 2.10, 2.40, 5.00, 3.80, 2.20, 4.60, 4.00, 2.30, 3.60, 2.20])
+
+# מצב: (שם, מדרגות הסולם, פרופיל, אקורדים: (שם-תצוגה, מרחק שורש מהטוניקה, איכות))
+MODES = {
+    "major": ("מז'ור", [0, 2, 4, 5, 7, 9, 11], MAJOR_P,
+              [("I", 0, "maj"), ("ii", 2, "min"), ("iii", 4, "min"), ("IV", 5, "maj"),
+               ("V", 7, "maj"), ("vi", 9, "min")]),
+    "minor": ("מינור", [0, 2, 3, 5, 7, 8, 10, 11], MINOR_P,
+              [("i", 0, "min"), ("iv", 5, "min"), ("V", 7, "maj"), ("VI", 8, "maj"),
+               ("III", 3, "maj"), ("VII", 10, "maj")]),
+    "ahava": ("אהבה רבה", [0, 1, 4, 5, 7, 8, 10], AHAVA_P,
+              [("I", 0, "maj"), ("II", 1, "maj"), ("iv", 5, "min"), ("vii", 10, "min")]),
+}
+
+QUALITY = {"maj": [0, 4, 7], "min": [0, 3, 7]}
+
+
+def detect_key(pc_weights: np.ndarray, final_pc=None):
+    """pc_weights: משקל לכל אחד מ-12 הצלילים. מחזיר (טוניקה, מצב, ציון)."""
+    best = (0, "major", -9)
+    for mode, (_, _, prof, _) in MODES.items():
+        for tonic in range(12):
+            p = np.roll(prof, tonic)
+            c = np.corrcoef(p, pc_weights)[0, 1]
+            if mode == "ahava":
+                c -= 0.05          # מעדיפים מז'ור/מינור כשקרוב
+            if final_pc is not None and tonic == final_pc:
+                c += 0.2           # שירים מסתיימים בדרך כלל בטוניקה
+            if c > best[2]:
+                best = (tonic, mode, c)
+    return best
+
+
+def scale_pcs(tonic, mode):
+    return sorted({(tonic + d) % 12 for d in MODES[mode][1]})
+
+
+def chords_for(tonic, mode):
+    """רשימת אקורדים: dict עם root (pc), quality, pcs, name, degree."""
+    out = []
+    for i, (deg, off, q) in enumerate(MODES[mode][3]):
+        root = (tonic + off) % 12
+        out.append({"degree": deg, "index": i, "root": root, "quality": q,
+                    "pcs": [(root + d) % 12 for d in QUALITY[q]]})
+    return out
+
+
+def key_name(tonic, mode):
+    return f"{NOTE_NAMES[tonic]} {MODES[mode][0]}"

@@ -1,0 +1,29 @@
+{
+  "name": "תזמורת חגיגית",
+  "description": "מיתרים, כלי נשיפה ותופי טימפני",
+  "order": 4,
+  "reverb": 0.35,
+  "accomp_db": -4,
+  "tracks": [
+    {"instrument": "strings", "octave": 4, "volume": 0.8, "pan": -0.25,
+     "bar": [{"t": 0, "d": 4, "n": "chord", "v": 0.6}]},
+    {"instrument": "strings", "octave": 3, "volume": 0.5, "pan": 0.25,
+     "bar": [{"t": 0, "d": 4, "n": "root", "v": 0.5}]},
+    {"instrument": "brass", "octave": 3, "volume": 0.6, "pan": 0.3,
+     "bar": [{"t": 0, "d": 0.7, "n": "chord", "v": 0.8}, {"t": 2, "d": 0.7, "n": "chord", "v": 0.65},
+             {"t": 3.5, "d": 0.4, "n": "chord", "v": 0.5}]},
+    {"instrument": "bass", "octave": 2, "volume": 0.7, "pan": 0,
+     "bar": [{"t": 0, "d": 0.9, "n": "root"}, {"t": 2, "d": 0.9, "n": "fifth_low"}]},
+    {"instrument": "timpani", "octave": 2, "volume": 0.5, "pan": 0,
+     "bar": [{"t": 0, "d": 1, "n": "root", "v": 0.8}, {"t": 2, "d": 1, "n": "fifth_low", "v": 0.5}]},
+    {"instrument": "drums", "volume": 0.4,
+     "bar": [{"t": 1, "n": "snare", "v": 0.4}, {"t": 3, "n": "snare", "v": 0.45},
+             {"t": 0, "n": "kick", "v": 0.6}]}
+  ],
+  "free": [
+    {"instrument": "strings", "octave": 4, "volume": 0.8, "pan": -0.2, "seg": [{"t": 0, "d": "seg", "n": "chord", "v": 0.6}]},
+    {"instrument": "brass", "octave": 3, "volume": 0.4, "pan": 0.3, "seg": [{"t": 0, "d": "seg", "n": "chord", "v": 0.45}]},
+    {"instrument": "bass", "octave": 2, "volume": 0.6, "pan": 0, "seg": [{"t": 0, "d": "seg", "n": "root"}]},
+    {"instrument": "timpani", "octave": 2, "volume": 0.4, "pan": 0, "seg": [{"t": 0, "d": 1, "n": "root", "v": 0.6}]}
+  ]
+}
