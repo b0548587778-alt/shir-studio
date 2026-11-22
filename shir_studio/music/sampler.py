@@ -32,12 +32,16 @@ def has(instrument):
     return available() and instrument in _meta
 
 
-def _region(instrument, midi):
+def _region(instrument, midi, vel=0.8):
+    """בוחר דגימה לפי הצליל ולפי עוצמת הנגינה (בכלים שיש להם כמה שכבות עוצמה)."""
     regs = _meta[instrument]
-    for r in regs:
-        if r["lo"] <= midi <= r["hi"]:
-            return r
-    return min(regs, key=lambda r: min(abs(r["lo"] - midi), abs(r["hi"] - midi)))
+    v = int(np.clip(vel, 0, 1) * 127)
+    match = [r for r in regs if r["lo"] <= midi <= r["hi"]]
+    if not match:
+        d = min(min(abs(r["lo"] - midi), abs(r["hi"] - midi)) for r in regs)
+        match = [r for r in regs if min(abs(r["lo"] - midi), abs(r["hi"] - midi)) == d]
+    layered = [r for r in match if r.get("vlo", 0) <= v <= r.get("vhi", 127)]
+    return (layered or match)[0]
 
 
 def _play(r, ratio, n):
@@ -59,7 +63,7 @@ def _play(r, ratio, n):
 
 
 def note(instrument, midi, dur, vel, tuning=0.0, release_cap=1.2):
-    r = _region(instrument, midi)
+    r = _region(instrument, midi, vel)
     ratio = 2 ** ((midi - r["root"]) / 12 + (r["tune"] + tuning * 100) / 1200) * r["sr"] / SR
     rel = float(np.clip(r["release"], 0.06, release_cap))
     n = int((dur + rel) * SR)
@@ -71,11 +75,34 @@ def note(instrument, midi, dur, vel, tuning=0.0, release_cap=1.2):
     db = np.maximum(db, -100)
     rel_db = np.where(t > dur, -60 * (t - dur) / rel, 0.0)
     env = 10 ** ((db + rel_db - r["att_db"]) / 20) * np.minimum(1.0, t / att)
-    gain = (0.25 + 0.75 * vel) ** 1.3
+    # בכלי עם שכבות עוצמה, הדגימה עצמה כבר רכה/חזקה - מקטינים את השינוי בעוצמה
+    gain = (0.25 + 0.75 * vel) ** (0.7 if "vlo" in r else 1.3)
     return (x * env * gain).astype(np.float32)
 
 
-def drum(name, vel):
+KIT = {"kick", "snare", "hat", "open_hat", "ride", "crash", "tom_hi", "tom_low"}
+_rr = {}
+
+
+def drum(name, vel, variant=None):
+    """מכת תוף. בערכה החדשה: דגימה לפי עוצמת המכה, ומתחלפת בין מכות (לא 'מכונה')."""
+    if "kit" in _meta and name in KIT:
+        v = int(np.clip(vel, 0, 1) * 127)
+        cands = [r for r in _meta["kit"] if r["drum"] == name and r["vlo"] <= v <= r["vhi"]]
+        if cands:
+            if variant is None:
+                variant = _rr.get(name, 0)
+                _rr[name] = variant + 1
+            r = cands[variant % len(cands)]
+            x = _pack[r["key"]].astype(np.float32) / 32768.0
+            if r["sr"] != SR:
+                x = _play(r, r["sr"] / SR, int(len(x) * SR / r["sr"]))
+            # השכבה כבר בעוצמה הנכונה; התאמה עדינה בתוך השכבה + איזון כללי
+            return (x * (0.75 + 0.35 * vel) * 0.9).astype(np.float32)
+    return _gm_drum(name, vel)
+
+
+def _gm_drum(name, vel):
     key = _meta["_drum_keys"][name]
     r = _region("drums", key)
     ratio = 2 ** ((key - r["root"]) / 12 + r["tune"] / 1200) * r["sr"] / SR

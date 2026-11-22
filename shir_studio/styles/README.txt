@@ -4,3 +4,7 @@ v = עוצמה (0 עד 1). "free" = מה מנגנים כשהשיר מושר בק
 כלים: piano, guitar, steel_guitar, bass, acoustic_bass, strings, slow_strings, brass, trumpet, violin, clarinet, flute, organ, accordion, choir, choir_oo, bass_voice, timpani, drums
 תופים: kick, snare, hat, open_hat, tambourine, crash, clap
 צלילים: root, root_low, third, fifth, fifth_low, octave, third_hi, fifth_hi, chord
+
+אפשרויות נוספות לסגנון: "lead" = הכלי שמנגן את הסולו בסוף (ברירת מחדל: כינור/קלרינט/חליל...),
+"solo": false = בלי סולו בסוף. כלי עם "enter" של 8 ומעלה מנגן רק בפזמונים.
+תופים נוספים (בערכה החדשה): ride, tom_hi, tom_low

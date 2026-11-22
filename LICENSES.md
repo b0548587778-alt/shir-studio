@@ -9,6 +9,8 @@
 |---|---|---|---|
 | קוד התוכנה עצמו | נכתב במיוחד: ניקוי רעשים, זיהוי גובה צליל (YIN), תיקון זיופים (PSOLA), זיהוי סולם, קצב ואקורדים, עיבוד וערבוב | שלך | כן |
 | צלילי כלי הנגינה והמקהלה | הקלטות אמיתיות מתוך FluidR3_GM מאת Frank Wen (קובץ shir_studio/samples/pack.npz) | MIT | כן - חובה לצרף את הודעת הרישיון (מצורפת למטה) |
+| פסנתר, גיטרה קלאסית וקלרינט | UprightPianoKW, SpanishClassicalGuitar, Clarinet מאתר FreePats (freepats.zenvoid.org) | CC0 (נחלת הכלל) | כן |
+| ערכת התופים | MuldjordKit מאת Lars Muldjord (גרסת FreePats) | CC-BY 4.0 | כן - חובה לציין קרדיט (מצורף למטה) |
 | קול הבס "דום" בסגנון הווקאלי | נוצר בקוד עצמו (סינתזה) | שלך | כן |
 | סמל התוכנה | צויר בקוד | שלך | כן |
 | Python | שפת התכנות | PSF | כן |
@@ -33,3 +35,9 @@ Permission is hereby granted, free of charge, to any person obtaining a copy of 
 The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+---
+## קרדיט לערכת התופים (CC-BY 4.0 - חובה לצרף)
+Drum samples: "MuldjordKit" by Lars Muldjord (www.muldjord.com, www.drumgizmo.org),
+SF2 version by the FreePats project. Licensed under Creative Commons Attribution 4.0 International
+(https://creativecommons.org/licenses/by/4.0/). The samples were trimmed and converted to mono.
