@@ -86,3 +86,56 @@ class Player:
             _sd().stop()
         except AudioError:
             pass
+
+
+def click_track(bpm, meter=4, seconds=60.0):
+    """צלילי מטרונום: פעמה ראשונה בתיבה גבוהה יותר."""
+    n = int(seconds * SR)
+    out = np.zeros(n, dtype=np.float32)
+    period = 60.0 / bpm
+    L = int(0.03 * SR)
+    t = np.arange(L) / SR
+    env = np.exp(-t * 120)
+    k = 0
+    while True:
+        i = int(k * period * SR)
+        if i + L >= n:
+            break
+        f = 1600 if k % meter == 0 else 1000
+        out[i:i + L] += (0.35 * np.sin(2 * np.pi * f * t) * env).astype(np.float32)
+        k += 1
+    return out
+
+
+class Metronome:
+    """מטרונום שמתנגן ברקע בזמן ההקלטה (מומלץ עם אוזניות, כדי שלא ייכנס להקלטה)."""
+
+    def __init__(self):
+        self._stream = None
+
+    def start(self, bpm, meter=4):
+        sd = _sd()
+        period = 60.0 / bpm
+        bar = click_track(bpm, meter, seconds=period * meter * 8)[: int(round(period * meter * 8 * SR))]
+        pos = [0]
+
+        def cb(outdata, frames, t, status):
+            idx = (pos[0] + np.arange(frames)) % len(bar)
+            outdata[:, 0] = bar[idx]
+            pos[0] = (pos[0] + frames) % len(bar)
+
+        try:
+            self._stream = sd.OutputStream(samplerate=SR, channels=1, dtype="float32", callback=cb)
+            self._stream.start()
+        except Exception:
+            self._stream = None
+            raise AudioError("לא הצלחתי להפעיל את המטרונום.\nבדוק שהרמקולים או האוזניות מחוברים.")
+
+    def stop(self):
+        if self._stream:
+            try:
+                self._stream.stop()
+                self._stream.close()
+            except Exception:
+                pass
+            self._stream = None

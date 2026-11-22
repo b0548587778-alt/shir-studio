@@ -45,7 +45,7 @@ def _db(v):
 
 
 class AdvancedDialog(QDialog):
-    def __init__(self, parent, settings: Settings, info=None, extras=False, fmt="mp3"):
+    def __init__(self, parent, settings: Settings, info=None, extras=False, fmt="mp3", style=None):
         super().__init__(parent)
         self.setWindowTitle("אפשרויות מתקדמות")
         self.setLayoutDirection(Qt.RightToLeft)
@@ -83,10 +83,13 @@ class AdvancedDialog(QDialog):
         f.addRow("העברת סולם (טרנספוזיציה):", self.transpose)
         self.harmony = QComboBox()
         for label, val in (("בלי", "off"), ("אוטומטי", "auto"), ("מעל המנגינה", "above"),
-                           ("מתחת למנגינה", "below")):
+                           ("מתחת למנגינה", "below"), ("שלושה קולות (מעל ומתחת)", "three")):
             self.harmony.addItem(label, val)
         self.harmony.setCurrentIndex(max(0, self.harmony.findData(settings.harmony)))
         f.addRow("קול שני (הרמוניה):", self.harmony)
+        self.choir = QCheckBox("מקהלה - הקול נשמע כמו כמה זמרים")
+        self.choir.setChecked(bool(settings.choir))
+        f.addRow("", self.choir)
         v.addWidget(g)
 
         # ---- מוזיקה
@@ -94,7 +97,7 @@ class AdvancedDialog(QDialog):
         f = QFormLayout(g)
         self.key = QComboBox()
         self.key.addItem("אוטומטי", None)
-        for mode in ("minor", "major", "ahava"):
+        for mode in MODES:
             for t in range(12):
                 self.key.addItem(f"{NOTE_NAMES[t]} {MODES[mode][0]}", f"{t}:{mode}")
         if settings.key:
@@ -135,6 +138,24 @@ class AdvancedDialog(QDialog):
         f.addRow("עוצמת הליווי:", self.accomp_db)
         f.addRow("הדהוד (ריוורב):", self.reverb)
         v.addWidget(g)
+
+        # ---- כלים
+        self.swaps = {}
+        if style:
+            from .music.styles import instruments_of, SWAPPABLE
+            insts = instruments_of(style)
+            if insts:
+                g = QGroupBox(f"כלי הנגינה בסגנון '{style.get('name', '')}'")
+                f = QFormLayout(g)
+                cur = settings.swaps or {}
+                for inst in insts:
+                    cb = QComboBox()
+                    for k, name in SWAPPABLE.items():
+                        cb.addItem(name, k)
+                    cb.setCurrentIndex(max(0, cb.findData(cur.get(inst, inst))))
+                    f.addRow(f"{SWAPPABLE[inst]} ←", cb)
+                    self.swaps[inst] = cb
+                v.addWidget(g)
 
         # ---- אקורדים
         g = QGroupBox("אקורדים - למוזיקאים")
@@ -211,4 +232,6 @@ class AdvancedDialog(QDialog):
             meter=self.meter.currentData(), chords_per_bar=self.cpb.currentData(),
             chords_text=self.chords.toPlainText().strip(), transpose=self.transpose.value(),
             voice_db=self.voice_db.slider.value(), accomp_db=self.accomp_db.slider.value(),
-            reverb=self.reverb.slider.value(), harmony=self.harmony.currentData())
+            reverb=self.reverb.slider.value(), harmony=self.harmony.currentData(),
+            choir=self.choir.isChecked(),
+            swaps={k: cb.currentData() for k, cb in self.swaps.items() if cb.currentData() != k} or None)

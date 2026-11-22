@@ -8,15 +8,18 @@ from PySide6.QtCore import Qt, QThread, Signal, QTimer, QStandardPaths
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QStackedWidget, QProgressBar, QFileDialog, QMessageBox, QGridLayout, QButtonGroup, QSlider,
+    QCheckBox, QSpinBox,
 )
 
 from . import APP_NAME
 from .audio.fileio import load, save, AudioError, SR
-from .audio.devices import Recorder, Player
+from .audio.devices import Recorder, Player, Metronome
 from .pipeline import Song, Settings
 from .advanced import AdvancedDialog
 from .music.styles import load_styles
 from .log import log_error
+from .project import save_project, load_project, settings_to_dict, settings_from_dict, History, batch, EXT
+from .pitchview import PitchDialog
 
 STYLE = """
 QWidget { font-family: 'Segoe UI', 'Arial'; font-size: 20px; color: #1d2733; background: #f6f3ec; }
@@ -106,6 +109,8 @@ class MainWindow(QMainWindow):
         self.save_extras = False
         self.save_fmt = "mp3"
         self.style_index = 0
+        self.metronome = Metronome()
+        self.history = History()
 
         self.stack = QStackedWidget()
         self.setCentralWidget(self.stack)
@@ -143,7 +148,22 @@ class MainWindow(QMainWindow):
         b2.clicked.connect(self.choose_file)
         h.addStretch(); h.addWidget(b1); h.addWidget(b2); h.addStretch()
         v.addLayout(h)
+        m = QHBoxLayout()
+        self.metro_on = QCheckBox("🥁 מטרונום בזמן ההקלטה (עדיף עם אוזניות)")
+        self.metro_bpm = QSpinBox()
+        self.metro_bpm.setRange(40, 220)
+        self.metro_bpm.setValue(100)
+        self.metro_bpm.setSuffix(" BPM")
+        m.addStretch(); m.addWidget(self.metro_on); m.addWidget(self.metro_bpm); m.addStretch()
+        v.addLayout(m)
         v.addStretch()
+        h2 = QHBoxLayout()
+        b3 = big_button("📂  פתח פרויקט שמור", "light")
+        b3.clicked.connect(self.open_project)
+        b4 = big_button("📚  עיבוד כמה שירים ברצף", "light")
+        b4.clicked.connect(self.batch_process)
+        h2.addWidget(b3); h2.addWidget(b4)
+        v.addLayout(h2)
         return w
 
     def _build_record(self):
@@ -252,7 +272,19 @@ class MainWindow(QMainWindow):
         h2.addWidget(b_org); h2.addWidget(b_stop)
         h3 = QHBoxLayout()
         h3.addWidget(b_other); h3.addWidget(b_key)
-        v.addWidget(b_res); v.addLayout(pr); v.addLayout(h2); v.addLayout(h3)
+        h4 = QHBoxLayout()
+        self.b_undo = big_button("↶  ביטול שינוי", "light")
+        self.b_undo.clicked.connect(self.undo)
+        self.b_redo = big_button("↷  החזר שינוי", "light")
+        self.b_redo.clicked.connect(self.redo)
+        b_graph = big_button("📈  גרף תיקון הזיופים", "light")
+        b_graph.clicked.connect(self.show_pitch)
+        b_proj = big_button("📁  שמור פרויקט", "light")
+        b_proj.clicked.connect(self.save_project)
+        for b in (self.b_undo, self.b_redo, b_graph, b_proj):
+            b.setStyleSheet("font-size:20px; min-height:48px; padding:8px;")
+            h4.addWidget(b)
+        v.addWidget(b_res); v.addLayout(pr); v.addLayout(h2); v.addLayout(h3); v.addLayout(h4)
         v.addStretch()
         h = QHBoxLayout()
         b_save = big_button("💾  שמור", None)
@@ -285,7 +317,11 @@ class MainWindow(QMainWindow):
         self.recorder = Recorder()
         try:
             self.recorder.start()
+            if self.metro_on.isChecked():
+                self.metronome.start(self.metro_bpm.value(), self.settings.meter)
         except AudioError as e:
+            self.recorder.stop()
+            self.metronome.stop()
             self.error(str(e))
             return
         # ספירה לאחור 3-2-1, כדי שתחילת השיר לא תיחתך
@@ -315,12 +351,14 @@ class MainWindow(QMainWindow):
 
     def cancel_recording(self):
         self.timer.stop()
+        self.metronome.stop()
         if self.recorder:
             self.recorder.stop()
         self.go_home()
 
     def stop_recording(self):
         self.timer.stop()
+        self.metronome.stop()
         if self.rec_start is None:          # לחצו 'סיום' עוד בזמן הספירה
             self.recorder.stop()
             self.go_home()
@@ -336,6 +374,8 @@ class MainWindow(QMainWindow):
             return
         self._keep_recording(data)
         self.process(data)
+        if self.metro_on.isChecked():                 # שרו עם מטרונום - הקצב ידוע
+            self.settings.tempo_mode, self.settings.bpm = "manual", float(self.metro_bpm.value())
 
     def _keep_recording(self, data):
         """שומר עותק של ההקלטה המקורית בתיקייה 'מסמכים\\שיר סטודיו\\הקלטות'."""
@@ -365,6 +405,9 @@ class MainWindow(QMainWindow):
         self.song = Song(data)
         self.settings.key = None
         self.settings.chords_text = ""
+        if self.settings.tempo_mode == "manual" and not self.metro_on.isChecked():
+            self.settings.tempo_mode = "auto"
+        self.history = History()
         self.choose_style()
 
     def choose_style(self):
@@ -373,7 +416,8 @@ class MainWindow(QMainWindow):
 
     def open_advanced(self, remake):
         info = self.song.info() if (self.song and self.song.analysis) else None
-        dlg = AdvancedDialog(self, self.settings, info, self.save_extras, self.save_fmt)
+        dlg = AdvancedDialog(self, self.settings, info, self.save_extras, self.save_fmt,
+                             style=self.styles[max(0, self.style_group.checkedId())])
         r = dlg.exec()
         if r == 1:
             self.settings = dlg.settings()
@@ -392,7 +436,8 @@ class MainWindow(QMainWindow):
     def other_key(self):
         self.make_song(change_key=True)
 
-    def make_song(self, change_key=False):
+    def make_song(self, change_key=False, record=True):
+        self._record = record
         st = self.styles[max(0, self.style_group.checkedId())]
         self.bar.setValue(0)
         self.work_title.setText("מכין את השיר...")
@@ -403,7 +448,15 @@ class MainWindow(QMainWindow):
             settings.key = None          # 'התאמה אחרת' עוקפת סולם שנקבע ידנית
             settings.chords_text = ""
 
+        pending = getattr(self, "_pending_key", None)
+        self._pending_key = None
+
         def job(p):
+            if pending:
+                song.prepare(p, settings)
+                from .music.analysis import apply_settings, set_key
+                apply_settings(song.analysis, settings)
+                set_key(song.analysis, pending)
             if change_key:
                 p(5, "מחפש התאמה אחרת...")
                 song.next_key()
@@ -415,8 +468,126 @@ class MainWindow(QMainWindow):
         self.worker.failed.connect(lambda m: (self.error(m), self.go_home()))
         self.worker.start()
 
+    def _state(self):
+        return {"settings": settings_to_dict(self.settings), "style": max(0, self.style_group.checkedId()),
+                "key_index": self.song.analysis.key_index if self.song and self.song.analysis else 0}
+
+    def _restore(self, state):
+        if not state:
+            return
+        self.settings = settings_from_dict(state["settings"])
+        b = self.style_group.button(state["style"])
+        if b:
+            b.setChecked(True)
+        self.harm_btn.blockSignals(True)
+        self.harm_btn.setChecked(self.settings.harmony != "off")
+        self.harm_btn.blockSignals(False)
+        if self.song and self.song.analysis:
+            from .music.analysis import set_key
+            set_key(self.song.analysis, state.get("key_index", 0))
+        self.make_song(record=False)
+
+    def undo(self):
+        self._restore(self.history.undo())
+
+    def redo(self):
+        self._restore(self.history.redo())
+
+    def _update_undo(self):
+        self.b_undo.setEnabled(self.history.can_undo())
+        self.b_redo.setEnabled(self.history.can_redo())
+
+    def show_pitch(self):
+        if self.song and self.song.analysis is not None:
+            PitchDialog(self, self.song.pitch_curves(self.settings)).exec()
+
+    def _info(self, title, text):
+        box = QMessageBox(self)
+        box.setLayoutDirection(Qt.RightToLeft)
+        box.setWindowTitle(title)
+        box.setText(text)
+        box.addButton("אישור", QMessageBox.AcceptRole)
+        box.exec()
+
+    def save_project(self):
+        if self.original is None:
+            return
+        start = os.path.join(QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation), f"השיר שלי{EXT}")
+        path, _ = QFileDialog.getSaveFileName(self, "שמור פרויקט", start, f"פרויקט שיר סטודיו (*{EXT})")
+        if not path:
+            return
+        if not path.lower().endswith(EXT):
+            path += EXT
+        try:
+            st = self.styles[max(0, self.style_group.checkedId())]
+            save_project(path, self.original, self.settings, st["id"],
+                         {"key_index": self.song.analysis.key_index if self.song.analysis else 0})
+        except Exception:
+            log_error(traceback.format_exc())
+            self.error("לא הצלחתי לשמור את הפרויקט.\nבדוק שיש מקום בדיסק ונסה שוב.")
+            return
+        self._info("נשמר", f"הפרויקט נשמר:\n{path}\n\nאפשר לפתוח אותו בהמשך ממסך הפתיחה.")
+
+    def open_project(self):
+        start = QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation)
+        path, _ = QFileDialog.getOpenFileName(self, "פתח פרויקט", start, f"פרויקט שיר סטודיו (*{EXT})")
+        if not path:
+            return
+        try:
+            raw, settings, style_id, meta = load_project(path)
+        except Exception:
+            log_error(traceback.format_exc())
+            self.error("לא הצלחתי לפתוח את הפרויקט.\nייתכן שהקובץ פגום.")
+            return
+        self.original = raw
+        self.song = Song(raw)
+        self.history = History()
+        self.settings = settings
+        for i, st in enumerate(self.styles):
+            if st["id"] == style_id:
+                self.style_group.button(i).setChecked(True)
+        self.harm_btn.setChecked(settings.harmony != "off")
+        ki = meta.get("key_index", 0)
+        self._pending_key = ki
+        self.make_song()
+
+    def batch_process(self):
+        start = QStandardPaths.writableLocation(QStandardPaths.MusicLocation)
+        paths, _ = QFileDialog.getOpenFileNames(self, "בחר כמה שירים", start,
+                                                "קבצי שיר (*.mp3 *.wav *.flac *.ogg *.m4a)")
+        if not paths:
+            return
+        folder = QFileDialog.getExistingDirectory(self, "לאן לשמור את השירים המוכנים?", os.path.dirname(paths[0]))
+        if not folder:
+            return
+        st = self.styles[max(0, self.style_group.checkedId())]
+        settings, fmt = self.settings, self.save_fmt
+        self.bar.setValue(0)
+        self.work_title.setText("מעבד את השירים...")
+        self.stack.setCurrentWidget(self.work)
+        self.worker = Worker(lambda p: batch(paths, st, settings, folder, fmt, progress=p))
+        self.worker.progress.connect(self.bar.setValue)
+        self.worker.message.connect(self.work_title.setText)
+        self.worker.finished_ok.connect(self._batch_done)
+        self.worker.failed.connect(lambda m: (self.error(m), self.go_home()))
+        self.worker.start()
+
+    def _batch_done(self, results):
+        ok = [r for r in results if r[1]]
+        bad = [r for r in results if not r[1]]
+        msg = f"הוכנו {len(ok)} שירים (סגנון: {self.styles[max(0, self.style_group.checkedId())]['name']})."
+        if ok:
+            msg += f"\nנשמרו בתיקייה:\n{os.path.dirname(ok[0][1])}"
+        if bad:
+            msg += "\n\nלא הצלחתי להכין:\n" + "\n".join(os.path.basename(r[0]) for r in bad)
+        self.go_home()
+        self._info("סיום", msg)
+
     def _processed(self, result, st):
         self.result = result
+        if self._record:
+            self.history.push(self._state())
+        self._update_undo()
         self.bar.setValue(100)
         hint = f"סגנון: {st['name']}"
         if not self.song.info()["steady"]:

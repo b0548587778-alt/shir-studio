@@ -1,0 +1,212 @@
+{
+ "name": "מזרחי",
+ "description": "כינור, עוגב ותופי מקצב מזרחיים - שמח וחם",
+ "order": 8,
+ "reverb": 0.22,
+ "accomp_db": -4,
+ "tracks": [
+  {
+   "instrument": "bass",
+   "octave": 2,
+   "volume": 0.9,
+   "pan": 0,
+   "bar": [
+    {
+     "t": 0,
+     "n": "root",
+     "v": 0.9,
+     "d": 0.7
+    },
+    {
+     "t": 1.5,
+     "n": "root",
+     "v": 0.7,
+     "d": 0.4
+    },
+    {
+     "t": 2,
+     "n": "fifth_low",
+     "v": 0.8,
+     "d": 0.7
+    },
+    {
+     "t": 3,
+     "n": "root",
+     "v": 0.7,
+     "d": 0.4
+    }
+   ]
+  },
+  {
+   "instrument": "organ",
+   "octave": 4,
+   "volume": 0.5,
+   "pan": -0.3,
+   "bar": [
+    {
+     "t": 0.5,
+     "n": "chord",
+     "v": 0.5,
+     "d": 0.4
+    },
+    {
+     "t": 1.5,
+     "n": "chord",
+     "v": 0.5,
+     "d": 0.4
+    },
+    {
+     "t": 2.5,
+     "n": "chord",
+     "v": 0.5,
+     "d": 0.4
+    },
+    {
+     "t": 3.5,
+     "n": "chord",
+     "v": 0.5,
+     "d": 0.4
+    }
+   ]
+  },
+  {
+   "instrument": "violin",
+   "octave": 4,
+   "volume": 0.35,
+   "pan": 0.35,
+   "enter": 4,
+   "bar": [
+    {
+     "t": 0,
+     "n": "fifth",
+     "v": 0.5,
+     "d": 1.9
+    },
+    {
+     "t": 2,
+     "n": "third_hi",
+     "v": 0.45,
+     "d": 1.9
+    }
+   ]
+  },
+  {
+   "instrument": "drums",
+   "volume": 0.65,
+   "crash_on_phrase": true,
+   "bar": [
+    {
+     "t": 0,
+     "n": "kick",
+     "v": 0.95
+    },
+    {
+     "t": 1.5,
+     "n": "kick",
+     "v": 0.7
+    },
+    {
+     "t": 2,
+     "n": "kick",
+     "v": 0.85
+    },
+    {
+     "t": 1,
+     "n": "clap",
+     "v": 0.6
+    },
+    {
+     "t": 3,
+     "n": "clap",
+     "v": 0.65
+    },
+    {
+     "t": 0.5,
+     "n": "tambourine",
+     "v": 0.4
+    },
+    {
+     "t": 1.5,
+     "n": "tambourine",
+     "v": 0.4
+    },
+    {
+     "t": 2.5,
+     "n": "tambourine",
+     "v": 0.4
+    },
+    {
+     "t": 3.5,
+     "n": "tambourine",
+     "v": 0.5
+    }
+   ],
+   "fill": [
+    {
+     "t": 3,
+     "n": "clap",
+     "v": 0.6
+    },
+    {
+     "t": 3.25,
+     "n": "clap",
+     "v": 0.5
+    },
+    {
+     "t": 3.5,
+     "n": "clap",
+     "v": 0.7
+    },
+    {
+     "t": 3.75,
+     "n": "clap",
+     "v": 0.8
+    }
+   ]
+  }
+ ],
+ "free": [
+  {
+   "instrument": "organ",
+   "octave": 4,
+   "volume": 0.6,
+   "pan": -0.3,
+   "seg": [
+    {
+     "t": 0,
+     "d": "seg",
+     "n": "chord",
+     "v": 0.5
+    }
+   ]
+  },
+  {
+   "instrument": "violin",
+   "octave": 4,
+   "volume": 0.4,
+   "pan": 0.3,
+   "seg": [
+    {
+     "t": 0,
+     "d": "seg",
+     "n": "third",
+     "v": 0.5
+    }
+   ]
+  },
+  {
+   "instrument": "bass",
+   "octave": 2,
+   "volume": 0.6,
+   "pan": 0,
+   "seg": [
+    {
+     "t": 0,
+     "d": "seg",
+     "n": "root",
+     "v": 0.6
+    }
+   ]
+  }
+ ]
+}

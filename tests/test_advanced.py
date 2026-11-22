@@ -38,7 +38,7 @@ def test_harmony_is_a_third_or_fourth_away():
     s = Song(x)
     out = s.make(load_styles()[-1], lambda p, m=None: None, Settings(harmony="above"))
     assert np.isfinite(out).all()
-    f, _ = yin(s.harmony)
+    f, _ = yin(s.harmony[0])
     fm, _ = yin(s.tuned)
     v = (f > 0) & (fm > 0)
     d = np.round(hz_to_midi(f[v]) - hz_to_midi(fm[v]))
