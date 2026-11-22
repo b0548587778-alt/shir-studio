@@ -30,6 +30,10 @@ class Analysis:
     downbeat: int                # אינדקס הפעמה הראשונה בתיבה
     chords: list = field(default_factory=list)   # (start, end, chord dict)
     duration: float = 0.0
+    keys: list = field(default_factory=list)     # סולמות חלופיים לפי סדר התאמה
+    key_index: int = 0
+    strength: float = 0.8
+    curve_term: np.ndarray = None
 
 
 def _tuning_curve(midi, voiced):
@@ -235,17 +239,11 @@ def analyze(x: np.ndarray, strength: float = 0.8, progress=None):
         w[int(round(nt.pitch)) % 12] += min(nt.end - nt.start, 2.0)
     longs = [nt for nt in notes if nt.end - nt.start > 0.25] or notes
     final_pc = int(round(longs[-1].pitch)) % 12 if longs else None
-    tonic, mode, _ = theory.detect_key(w, final_pc)
-    # טוניקה = הצליל האחרון הארוך לעיתים קרובות - חיזוק קל
-    scale = theory.scale_pcs(tonic, mode)
-    corr = _targets(np.nan_to_num(mc0), voiced, notes, scale, strength)
-    # תיקון כולל: גם הזליגה וגם הזיוף
-    total = np.where(voiced, corr - (curve - glob) * strength, 0)
-    total = gaussian_filter1d(total, 2)
-    if progress:
-        progress(45)
+    ranked = theory.rank_keys(w, final_pc)
     env = _onset_env(x, notes)
     tempo, beats, clarity = _tempo_beats(env)
+    if progress:
+        progress(45)
     on_beat = 0
     long_notes = [nt for nt in notes if nt.end - nt.start > 0.12]
     for nt in long_notes:
@@ -253,22 +251,47 @@ def analyze(x: np.ndarray, strength: float = 0.8, progress=None):
             on_beat += 1
     ratio = on_beat / max(1, len(long_notes))
     steady = bool(clarity > 0.25 and ratio > 0.45 and len(beats) >= 8)
-    a = Analysis(f0=f0, midi_c=mc0, tuning=glob, tonic=tonic, mode=mode, notes=notes,
-                 correction=total, beats=beats, tempo=tempo, steady=steady,
-                 downbeat=0, duration=duration)
-    chords = theory.chords_for(tonic, mode)
+    a = Analysis(f0=f0, midi_c=mc0, tuning=glob, tonic=ranked[0][0], mode=ranked[0][1], notes=notes,
+                 correction=None, beats=beats, tempo=tempo, steady=steady,
+                 downbeat=0, duration=duration, keys=_distinct(ranked[:1] + theory.rank_keys(w, None)), strength=strength,
+                 curve_term=(curve - glob))
     if steady:
         a.downbeat = _downbeat(beats, notes)
-        bars = beats[a.downbeat::2]          # אקורד כל חצי תיבה
-        segs = [(bars[i], bars[i + 1]) for i in range(len(bars) - 1)]
-        raw = _choose_chords(segs, notes, chords)
-        # איחוד חצאי תיבה זהים
-        a.chords = _merge(raw)
-    else:
-        segs = _free_segments(notes, duration)
-        a.chords = _merge(_choose_chords(segs, notes, chords))
+    set_key(a, 0)
     if progress:
         progress(55)
+    return a
+
+
+def _distinct(ranked, n=4):
+    """המועמדים הטובים - בלי שניים שנותנים כמעט אותו ליווי."""
+    out = []
+    for t, m, c in ranked:
+        if len(out) >= n:
+            break
+        if (t, m) in [(o[0], o[1]) for o in out]:
+            continue
+        out.append((t, m, c))
+    return out
+
+
+def set_key(a, index):
+    """קובע סולם (לפי מספר מועמד) ומחשב מחדש את תיקון הקול והאקורדים."""
+    index = index % len(a.keys)
+    a.key_index = index
+    a.tonic, a.mode = a.keys[index][0], a.keys[index][1]
+    voiced = a.f0 > 0
+    scale = theory.scale_pcs(a.tonic, a.mode)
+    corr = _targets(np.nan_to_num(a.midi_c), voiced, a.notes, scale, a.strength)
+    total = np.where(voiced, corr - a.curve_term * a.strength, 0)
+    a.correction = gaussian_filter1d(total, 2)
+    chords = theory.chords_for(a.tonic, a.mode)
+    if a.steady:
+        bars = a.beats[a.downbeat::2]          # אקורד כל חצי תיבה
+        segs = [(bars[i], bars[i + 1]) for i in range(len(bars) - 1)]
+        a.chords = _merge(_choose_chords(segs, a.notes, chords))
+    else:
+        a.chords = _merge(_choose_chords(_free_segments(a.notes, a.duration), a.notes, chords))
     return a
 
 

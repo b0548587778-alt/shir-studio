@@ -22,6 +22,8 @@ def selftest():
     song = Song(x)
     styles = load_styles()
     assert len(styles) >= 5
+    from .music import sampler
+    assert sampler.available(), "sample pack missing"
     for st in styles:
         y = song.make(st, lambda p, m=None: None)
         assert np.isfinite(y).all() and y.ndim == 2

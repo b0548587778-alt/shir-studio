@@ -232,17 +232,30 @@ DRUMS = {"kick": kick, "snare": snare, "hat": hat, "open_hat": lambda v: hat(v, 
          "tambourine": tambourine, "crash": crash, "clap": clap}
 
 
+from . import sampler
+
+SYNTH_ONLY = {"bass_voice"}
+
+
 def render_note(instrument, midi, dur, vel, tuning=0.0):
     key = (instrument, int(midi), round(dur, 2), round(vel, 1), round(tuning, 2))
     if key in _cache:
         return _cache[key]
-    x = MELODIC[instrument](hz(midi, tuning), dur, vel).astype(np.float32)
+    if instrument not in SYNTH_ONLY and sampler.has(instrument):
+        x = sampler.note(instrument, int(midi), dur, vel, tuning)
+    else:
+        x = MELODIC[instrument](hz(midi, tuning), dur, vel).astype(np.float32)
     if len(_cache) < 3000:
         _cache[key] = x
     return x
 
 
 def render_drum(name, vel):
+    if sampler.has("drums"):
+        key = ("s", name, round(vel, 1))
+        if key not in _cache:
+            _cache[key] = sampler.drum(name, vel)
+        return _cache[key]
     key = (name, round(vel, 1), int(_rng.integers(3)))   # 3 גרסאות לכל מכה - פחות 'מכני'
     if key not in _cache:
         _cache[key] = DRUMS[name](vel).astype(np.float32)

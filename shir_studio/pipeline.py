@@ -25,6 +25,12 @@ class Song:
         progress(45, "מתקן את הקול...")
         self.tuned = shift(self.clean, self.analysis.f0, self.analysis.correction)
 
+    def next_key(self):
+        """הליווי לא מתאים? עוברים לסולם הבא בסדר ההתאמה."""
+        from .music.analysis import set_key
+        set_key(self.analysis, self.analysis.key_index + 1)
+        self.tuned = shift(self.clean, self.analysis.f0, self.analysis.correction)
+
     def make(self, style, progress):
         if self.tuned is None:
             self.prepare(progress)

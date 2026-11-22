@@ -25,7 +25,12 @@ QUALITY = {"maj": [0, 4, 7], "min": [0, 3, 7]}
 
 def detect_key(pc_weights: np.ndarray, final_pc=None):
     """pc_weights: משקל לכל אחד מ-12 הצלילים. מחזיר (טוניקה, מצב, ציון)."""
-    best = (0, "major", -9)
+    return rank_keys(pc_weights, final_pc)[0]
+
+
+def rank_keys(pc_weights, final_pc=None):
+    """כל הסולמות האפשריים, מהמתאים ביותר לפחות מתאים."""
+    res = []
     for mode, (_, _, prof, _) in MODES.items():
         for tonic in range(12):
             p = np.roll(prof, tonic)
@@ -34,9 +39,10 @@ def detect_key(pc_weights: np.ndarray, final_pc=None):
                 c -= 0.05          # מעדיפים מז'ור/מינור כשקרוב
             if final_pc is not None and tonic == final_pc:
                 c += 0.2           # שירים מסתיימים בדרך כלל בטוניקה
-            if c > best[2]:
-                best = (tonic, mode, c)
-    return best
+            res.append((tonic, mode, c))
+    res.sort(key=lambda r: -r[2])
+    # מסירים כפילויות של אותה קבוצת צלילים כשהציון כמעט זהה? לא - שומרים, הן שונות בטוניקה
+    return res
 
 
 def scale_pcs(tonic, mode):

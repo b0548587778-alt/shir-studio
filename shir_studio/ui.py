@@ -216,9 +216,13 @@ class MainWindow(QMainWindow):
         b_stop.clicked.connect(self.player.stop)
         b_other = big_button("🎵  נסה סגנון ליווי אחר", "light")
         b_other.clicked.connect(self.choose_style)
+        b_key = big_button("🔄  הליווי לא מתאים לשיר?\nנסה התאמה אחרת", "light")
+        b_key.clicked.connect(self.other_key)
         h2 = QHBoxLayout()
         h2.addWidget(b_org); h2.addWidget(b_stop)
-        v.addWidget(b_res); v.addLayout(h2); v.addWidget(b_other)
+        h3 = QHBoxLayout()
+        h3.addWidget(b_other); h3.addWidget(b_key)
+        v.addWidget(b_res); v.addLayout(h2); v.addLayout(h3)
         v.addStretch()
         h = QHBoxLayout()
         b_save = big_button("💾  שמור", None)
@@ -281,7 +285,18 @@ class MainWindow(QMainWindow):
             self.error("לא שמעתי קול בהקלטה.\nבדוק שהמיקרופון מחובר ודבר קרוב אליו.")
             self.go_home()
             return
+        self._keep_recording(data)
         self.process(data)
+
+    def _keep_recording(self, data):
+        """שומר עותק של ההקלטה המקורית בתיקייה 'מסמכים\\שיר סטודיו\\הקלטות'."""
+        try:
+            d = os.path.join(QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation),
+                             "שיר סטודיו", "הקלטות")
+            os.makedirs(d, exist_ok=True)
+            save(os.path.join(d, time.strftime("הקלטה %Y-%m-%d %H-%M-%S.mp3")), data)
+        except Exception:
+            log_error(traceback.format_exc())
 
     def choose_file(self):
         start = QStandardPaths.writableLocation(QStandardPaths.MusicLocation)
@@ -305,13 +320,22 @@ class MainWindow(QMainWindow):
         self.player.stop()
         self.stack.setCurrentWidget(self.style_page)
 
-    def make_song(self):
+    def other_key(self):
+        self.make_song(change_key=True)
+
+    def make_song(self, change_key=False):
         st = self.styles[max(0, self.style_group.checkedId())]
         self.bar.setValue(0)
         self.work_title.setText("מכין את השיר...")
         self.stack.setCurrentWidget(self.work)
         song = self.song
-        self.worker = Worker(lambda p: song.make(st, p))
+
+        def job(p):
+            if change_key:
+                p(5, "מחפש התאמה אחרת...")
+                song.next_key()
+            return song.make(st, p)
+        self.worker = Worker(job)
         self.worker.progress.connect(self.bar.setValue)
         self.worker.message.connect(self.work_title.setText)
         self.worker.finished_ok.connect(lambda r: self._processed(r, st))
