@@ -19,7 +19,7 @@ class Settings:
     """הגדרות מתקדמות. ערכי ברירת המחדל = מה שמשתמש רגיל מקבל."""
     denoise: int = 100          # 0-100
     tune: int = 80              # עוצמת תיקון הזיופים 0-100
-    key: tuple = None           # (טוניקה 0-11, 'major'/'minor'/'ahava') או None = אוטומטי
+    key: tuple = None           # (טוניקה 0-11, 'major'/'minor'/'ahava'/'misheberach') או None = אוטומטי
     tempo_mode: str = "auto"    # auto / manual / free
     bpm: float = 0
     meter: int = 4              # 4 או 3
@@ -29,7 +29,9 @@ class Settings:
     voice_db: float = 0
     accomp_db: float = 0
     reverb: int = 100           # אחוזים
-    harmony: str = "off"        # off / auto / above / below  - קול שני
+    harmony: str = "off"        # off / auto / above / below / three  - קול שני (three = שלושה קולות)
+    choir: bool = False         # מקהלה: כמה עותקים של הקול עם הבדלים קטנים
+    swaps: dict = None          # החלפת כלים בסגנון: {"clarinet": "violin"}
 
     def prep_key(self):
         return (self.denoise,)
@@ -77,10 +79,11 @@ class Song:
              st.chords_text, st.meter, st.tempo_mode, st.bpm)
         if k != self._harm_key:
             from .music.harmony import harmony_shift
-            hs = harmony_shift(a, st.harmony)
             # הקול השני תמיד מתוקן מלא - שלא יתנגש עם הקול הראשי
             full = a.correction / max(a.strength, 1e-3) if a.strength > 0 else a.correction
-            self.harmony = shift(self.clean, a.f0, full + st.transpose + hs)
+            modes = ("above", "below") if st.harmony == "three" else (st.harmony,)
+            self.harmony = [shift(self.clean, a.f0, full + st.transpose + harmony_shift(a, m))
+                            for m in modes]
             self._harm_key = k
 
     def next_key(self):
@@ -98,14 +101,29 @@ class Song:
             progress(50, "מוסיף קול שני...")
         self._make_harmony(st)
         progress(55, "מוסיף ליווי...")
+        from .music.styles import apply_swaps
+        style = apply_swaps(style, st.swaps)
         tracks, lead = render(self.analysis, style, progress=lambda p: progress(55 + p * 0.3, None))
         progress(88, "מערבב את הקול והליווי...")
         out, stems = mix(self.tuned, tracks, lead, style, accomp_db=st.accomp_db,
                          voice_db=st.voice_db, reverb=st.reverb / 100, stems=True,
-                         harmony=self.harmony)
+                         harmony=self.harmony, choir=st.choir)
         self.last_tracks, self.last_lead, self.last_stems = tracks, lead, stems
         progress(100, None)
         return out
+
+    def pitch_curves(self, settings=None):
+        """לגרף: זמן, גובה הצליל לפני התיקון ואחריו (בחצאי טונים), והצלילים הנקיים שזוהו."""
+        from .audio.pitch import hz_to_midi, FRAME_SEC
+        a = self.analysis
+        f0 = np.asarray(a.f0, dtype=float)
+        voiced = f0 > 0
+        before = np.full(len(f0), np.nan)
+        before[voiced] = hz_to_midi(f0[voiced])
+        corr = a.correction if a.correction is not None else np.zeros(len(f0))
+        after = before + corr[: len(f0)] + (settings.transpose if settings else 0)
+        t = np.arange(len(f0)) * FRAME_SEC
+        return t, before, after, [(nt.start, nt.end, nt.pitch) for nt in a.notes]
 
     def info(self):
         a = self.analysis

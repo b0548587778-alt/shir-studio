@@ -14,7 +14,7 @@ def test_key_tempo_and_all_styles():
     a = s.analysis
     assert (a.tonic, a.mode) == (9, "minor")         # לה מינור
     styles = load_styles()
-    assert len(styles) == 7
+    assert len(styles) == 10
     for st in styles:
         y = s.make(st, lambda p, m=None: None)
         assert y.ndim == 2 and np.isfinite(y).all() and np.abs(y).max() <= 0.9

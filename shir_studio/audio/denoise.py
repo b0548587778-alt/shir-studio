@@ -37,6 +37,7 @@ def denoise(x: np.ndarray, strength: float = 1.0, progress=None) -> np.ndarray:
     floor = 10 ** (-(18.0 * strength) / 20)  # הנחתה מקסימלית של 18dB
     gain = floor + (1 - floor) * mask
     gain = 1 - strength * (1 - gain)
+    gain = gain * _dereverb_gain(mag, strength)
     if progress:
         progress(70)
     _, y = istft(Z * gain, fs=SR, nperseg=NFFT, noverlap=NFFT - HOP)
@@ -46,6 +47,20 @@ def denoise(x: np.ndarray, strength: float = 1.0, progress=None) -> np.ndarray:
     if progress:
         progress(90)
     return normalize(y)
+
+
+def _dereverb_gain(mag, strength, t60=0.3, delay_frames=4, amount=0.6):
+    """הפחתת הד החדר (שיטת Lebart): ההד המאוחר = האנרגיה של לפני ~50ms, דועכת לפי זמן ההדהוד.
+    צליל ארוך ויציב מקבל הנחתה אחידה (לא מורגשת), וזנב ההד אחרי שהצליל נגמר - מוחלש."""
+    if strength <= 0:
+        return 1.0
+    p = uniform_filter(mag ** 2, size=(1, 3))
+    dt = delay_frames * HOP / SR
+    late = np.zeros_like(p)
+    late[:, delay_frames:] = p[:, :-delay_frames] * np.exp(-2 * 6.9 * dt / (2 * t60))
+    g = np.sqrt(np.clip(1 - amount * strength * late / (p + 1e-12), 0, 1))
+    g = np.maximum(g, 10 ** (-10 / 20))         # לכל היותר 10dB - שלא יישמע 'מתכתי'
+    return uniform_filter(g, size=(3, 3))
 
 
 def normalize(y: np.ndarray, peak_db: float = -1.0) -> np.ndarray:
