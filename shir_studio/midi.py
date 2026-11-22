@@ -6,6 +6,7 @@ GM_PROGRAM = {"piano": 0, "guitar": 24, "steel_guitar": 25, "bass": 33, "acousti
               "trumpet": 56, "brass": 61, "clarinet": 71, "accordion": 21, "timpani": 47,
               "organ": 16, "flute": 73, "violin": 40}
 GM_DRUM = {"kick": 36, "snare": 38, "clap": 39, "hat": 42, "open_hat": 46, "crash": 49,
+           "tom_low": 45, "tom_hi": 50,
            "tambourine": 54, "ride": 51}
 PPQ = 480
 

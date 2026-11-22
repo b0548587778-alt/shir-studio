@@ -252,11 +252,18 @@ def render_note(instrument, midi, dur, vel, tuning=0.0):
 
 def render_drum(name, vel):
     if sampler.has("drums"):
-        key = ("s", name, round(vel, 1))
+        var = int(_rng.integers(2))                          # שתי גרסאות לכל מכה
+        key = ("s", name, round(vel, 1), var)
         if key not in _cache:
-            _cache[key] = sampler.drum(name, vel)
+            _cache[key] = sampler.drum(name, vel, var)
         return _cache[key]
     key = (name, round(vel, 1), int(_rng.integers(3)))   # 3 גרסאות לכל מכה - פחות 'מכני'
     if key not in _cache:
         _cache[key] = DRUMS[name](vel).astype(np.float32)
     return _cache[key]
+
+
+def has_drum(name):
+    """האם יש צליל אמיתי לתוף הזה (למשל טומים - רק בערכת התופים החדשה)."""
+    return sampler.available() and ("kit" in sampler._meta and name in sampler.KIT
+                                    or name in sampler._meta.get("_drum_keys", {}))
