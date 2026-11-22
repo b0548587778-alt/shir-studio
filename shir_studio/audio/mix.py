@@ -86,18 +86,18 @@ def pan_gains(p):
     return np.cos(ang), np.sin(ang)
 
 
-def mix(voice, tracks, lead, style):
+def mix(voice, tracks, lead, style, accomp_db=0.0, voice_db=0.0, reverb=1.0, stems=False):
     """voice: מונו מעובד. tracks: [(spec, buf)]. lead: שניות מבוא לפני השירה."""
-    n = max(len(b) for _, b in tracks) if tracks else len(voice) + int(lead * SR)
+    n = max(len(t[1]) for t in tracks) if tracks else len(voice) + int(lead * SR)
     n = max(n, len(voice) + int(lead * SR) + SR)
     v = process_voice(voice.astype(np.float64))
     vbuf = np.zeros(n)
     s = int(lead * SR)
-    vbuf[s:s + len(v)] = v
+    vbuf[s:s + len(v)] = v * 10 ** (voice_db / 20)
     vr = rms(v[np.abs(v) > 0.02]) if np.any(np.abs(v) > 0.02) else rms(v)
 
     acc = np.zeros((n, 2))
-    for spec, buf in tracks:
+    for spec, buf, *_ in tracks:
         b = np.zeros(n)
         b[:min(n, len(buf))] = buf[:n]
         r = rms(b[np.abs(b) > 1e-4]) if np.any(np.abs(b) > 1e-4) else 1.0
@@ -107,13 +107,13 @@ def mix(voice, tracks, lead, style):
         acc[:, 1] += b * gr
     if tracks:
         ar = rms(acc[s:s + len(v)]) if len(v) else rms(acc)
-        target = vr * 10 ** (style.get("accomp_db", -5) / 20)
+        target = vr * 10 ** ((style.get("accomp_db", -5) + accomp_db) / 20)
         acc *= target / max(ar, 1e-9)
         # הנמכה קלה של הליווי כשיש שירה
         venv = uniform_filter1d(np.abs(vbuf), int(0.2 * SR))
         duck = 1 - 0.25 * np.clip(venv / (vr + 1e-9), 0, 1)
         acc *= duck[:, None]
-    rv = style.get("reverb", 0.2)
+    rv = style.get("reverb", 0.2) * reverb
     vst = np.stack([vbuf, vbuf], axis=1) * 0.707
     vst = add_reverb(vst, rv * 0.7, 1.6)
     acc = add_reverb(acc, rv, 2.0)
@@ -123,8 +123,12 @@ def mix(voice, tracks, lead, style):
     if len(loud):
         out = out[: min(n, loud[-1] + int(0.5 * SR))]
     # עוצמה כוללת סבירה והגבלה
-    out *= 0.25 / max(rms(out), 1e-9)
-    out = limiter(out)
+    g = 0.25 / max(rms(out), 1e-9)
+    out = limiter(out * g)
     fade = int(0.3 * SR)
     out[-fade:] *= np.linspace(1, 0, fade)[:, None]
+    if stems:
+        k = len(out)
+        return out.astype(np.float32), {"קול": (vst[:k] * g).astype(np.float32),
+                                        "ליווי": (acc[:k] * g).astype(np.float32)}
     return out.astype(np.float32)

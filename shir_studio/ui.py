@@ -13,7 +13,8 @@ from PySide6.QtWidgets import (
 from . import APP_NAME
 from .audio.fileio import load, save, AudioError, SR
 from .audio.devices import Recorder, Player
-from .pipeline import Song
+from .pipeline import Song, Settings
+from .advanced import AdvancedDialog
 from .music.styles import load_styles
 from .log import log_error
 
@@ -96,6 +97,9 @@ class MainWindow(QMainWindow):
         self.worker = None
         self.song = None
         self.styles = load_styles()
+        self.settings = Settings()
+        self.save_extras = False
+        self.save_fmt = "mp3"
         self.style_index = 0
 
         self.stack = QStackedWidget()
@@ -185,7 +189,10 @@ class MainWindow(QMainWindow):
         go.clicked.connect(self.make_song)
         back = big_button("חזרה", "light")
         back.clicked.connect(self.go_home)
-        h.addWidget(go, 3); h.addWidget(back, 1)
+        adv = big_button("⚙", "light")
+        adv.setToolTip("אפשרויות מתקדמות")
+        adv.clicked.connect(lambda: self.open_advanced(remake=False))
+        h.addWidget(go, 3); h.addWidget(back, 1); h.addWidget(adv)
         v.addLayout(h)
         return w
 
@@ -230,7 +237,9 @@ class MainWindow(QMainWindow):
         b_save.clicked.connect(self.save_result)
         b_new = big_button("שיר חדש", "light")
         b_new.clicked.connect(self.go_home)
-        h.addWidget(b_save, 3); h.addWidget(b_new, 1)
+        b_adv = big_button("⚙  מתקדם", "light")
+        b_adv.clicked.connect(lambda: self.open_advanced(remake=True))
+        h.addWidget(b_save, 3); h.addWidget(b_new, 1); h.addWidget(b_adv, 1)
         v.addLayout(h)
         return w
 
@@ -314,11 +323,28 @@ class MainWindow(QMainWindow):
     def process(self, data):
         self.original = data
         self.song = Song(data)
+        self.settings.key = None
+        self.settings.chords_text = ""
         self.choose_style()
 
     def choose_style(self):
         self.player.stop()
         self.stack.setCurrentWidget(self.style_page)
+
+    def open_advanced(self, remake):
+        info = self.song.info() if (self.song and self.song.analysis) else None
+        dlg = AdvancedDialog(self, self.settings, info, self.save_extras, self.save_fmt)
+        r = dlg.exec()
+        if r == 1:
+            self.settings = dlg.settings()
+            self.save_extras = dlg.extras.isChecked()
+            self.save_fmt = dlg.fmt.currentData()
+        elif r == 2:
+            self.settings, self.save_extras, self.save_fmt = Settings(), False, "mp3"
+        else:
+            return
+        if remake and self.song:
+            self.make_song()
 
     def other_key(self):
         self.make_song(change_key=True)
@@ -329,12 +355,16 @@ class MainWindow(QMainWindow):
         self.work_title.setText("מכין את השיר...")
         self.stack.setCurrentWidget(self.work)
         song = self.song
+        settings = self.settings
+        if change_key:
+            settings.key = None          # 'התאמה אחרת' עוקפת סולם שנקבע ידנית
+            settings.chords_text = ""
 
         def job(p):
             if change_key:
                 p(5, "מחפש התאמה אחרת...")
                 song.next_key()
-            return song.make(st, p)
+            return song.make(st, p, settings)
         self.worker = Worker(job)
         self.worker.progress.connect(self.bar.setValue)
         self.worker.message.connect(self.work_title.setText)
@@ -358,20 +388,30 @@ class MainWindow(QMainWindow):
             self.error(str(e))
 
     def save_result(self):
-        start = os.path.join(QStandardPaths.writableLocation(QStandardPaths.MusicLocation), "השיר שלי.mp3")
-        path, _ = QFileDialog.getSaveFileName(self, "שמור את השיר", start, "קובץ MP3 (*.mp3)")
+        ext = self.save_fmt
+        start = os.path.join(QStandardPaths.writableLocation(QStandardPaths.MusicLocation), f"השיר שלי.{ext}")
+        flt = "קובץ MP3 (*.mp3)" if ext == "mp3" else "קובץ WAV (*.wav)"
+        path, _ = QFileDialog.getSaveFileName(self, "שמור את השיר", start, flt)
         if not path:
             return
-        if not path.lower().endswith(".mp3"):
-            path += ".mp3"
+        if not path.lower().endswith("." + ext):
+            path += "." + ext
+        extra = []
         try:
             save(path, self.result)
+            if self.save_extras:
+                folder = os.path.dirname(path)
+                base = os.path.splitext(os.path.basename(path))[0]
+                extra = self.song.export_extras(folder, base)
         except AudioError as e:
             self.error(str(e))
             return
         box = QMessageBox(self)
         box.setLayoutDirection(Qt.RightToLeft)
         box.setWindowTitle("נשמר")
-        box.setText(f"השיר נשמר בהצלחה!\n\n{path}")
+        msg = f"השיר נשמר בהצלחה!\n\n{path}"
+        if extra:
+            msg += "\n\nנשמרו גם:\n" + "\n".join(os.path.basename(p) for p in extra)
+        box.setText(msg)
         box.addButton("מעולה", QMessageBox.AcceptRole)
         box.exec()

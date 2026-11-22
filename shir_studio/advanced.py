@@ -1,0 +1,208 @@
+"""חלון 'אפשרויות מתקדמות' - לאנשים טכנולוגיים ולמוזיקאים. המסך הרגיל נשאר פשוט."""
+from dataclasses import replace
+
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
+    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox, QSlider, QLabel, QComboBox,
+    QSpinBox, QRadioButton, QButtonGroup, QPlainTextEdit, QPushButton, QCheckBox, QScrollArea,
+    QWidget,
+)
+
+from .pipeline import Settings
+from .music.theory import NOTE_NAMES, MODES
+
+CSS = """
+QWidget { font-size: 17px; }
+QGroupBox { font-weight: bold; font-size: 19px; border: 2px solid #c9d2dc; border-radius: 12px;
+            margin-top: 16px; padding: 14px 10px 10px 10px; background: #fbfaf6; }
+QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top right; padding: 0 8px; }
+QPushButton { font-size: 19px; min-height: 44px; padding: 6px 18px; border-radius: 12px; }
+QPlainTextEdit { background: white; border: 2px solid #c9d2dc; border-radius: 8px; font-size: 18px;
+                 font-family: Consolas, 'DejaVu Sans Mono', monospace; }
+QComboBox, QSpinBox { background: white; min-height: 34px; padding: 2px 8px; }
+QLabel#small { color: #5a6571; font-size: 15px; }
+"""
+
+
+def _slider(lo, hi, val, fmt):
+    w = QWidget()
+    h = QHBoxLayout(w)
+    h.setContentsMargins(0, 0, 0, 0)
+    s = QSlider(Qt.Horizontal)
+    s.setRange(lo, hi)
+    s.setValue(int(val))
+    lab = QLabel(fmt(val))
+    lab.setMinimumWidth(80)
+    s.valueChanged.connect(lambda v: lab.setText(fmt(v)))
+    h.addWidget(s, 1)
+    h.addWidget(lab)
+    w.slider = s
+    return w
+
+
+def _db(v):
+    return f"{v:+d} dB" if v else "רגיל"
+
+
+class AdvancedDialog(QDialog):
+    def __init__(self, parent, settings: Settings, info=None, extras=False, fmt="mp3"):
+        super().__init__(parent)
+        self.setWindowTitle("אפשרויות מתקדמות")
+        self.setLayoutDirection(Qt.RightToLeft)
+        self.setStyleSheet(CSS)
+        self.resize(720, 760)
+        self.info = info
+        outer = QVBoxLayout(self)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        body = QWidget()
+        v = QVBoxLayout(body)
+        scroll.setWidget(body)
+        outer.addWidget(scroll)
+
+        if info:
+            t = f"זוהה אוטומטית: סולם {info['key']}"
+            t += f" · קצב \u2066{info['tempo']} BPM\u2069" if info["steady"] else " · קצב חופשי"
+            lab = QLabel(t)
+            lab.setObjectName("small")
+            v.addWidget(lab)
+
+        # ---- קול
+        g = QGroupBox("קול")
+        f = QFormLayout(g)
+        self.denoise = _slider(0, 100, settings.denoise, lambda x: f"{x}%")
+        self.tune = _slider(0, 100, settings.tune, lambda x: "כבוי" if x == 0 else f"{x}%")
+        self.voice_db = _slider(-9, 9, settings.voice_db, _db)
+        self.transpose = QSpinBox()
+        self.transpose.setRange(-7, 7)
+        self.transpose.setValue(settings.transpose)
+        self.transpose.setSuffix(" חצאי טונים")
+        f.addRow("ניקוי רעשים:", self.denoise)
+        f.addRow("תיקון זיופים:", self.tune)
+        f.addRow("עוצמת הקול:", self.voice_db)
+        f.addRow("העברת סולם (טרנספוזיציה):", self.transpose)
+        v.addWidget(g)
+
+        # ---- מוזיקה
+        g = QGroupBox("מוזיקה")
+        f = QFormLayout(g)
+        self.key = QComboBox()
+        self.key.addItem("אוטומטי", None)
+        for mode in ("minor", "major", "ahava"):
+            for t in range(12):
+                self.key.addItem(f"{NOTE_NAMES[t]} {MODES[mode][0]}", f"{t}:{mode}")
+        if settings.key:
+            i = self.key.findData(f"{settings.key[0]}:{settings.key[1]}")
+            self.key.setCurrentIndex(max(0, i))
+        f.addRow("סולם:", self.key)
+
+        tw = QWidget()
+        th = QHBoxLayout(tw)
+        th.setContentsMargins(0, 0, 0, 0)
+        self.t_auto = QRadioButton("אוטומטי")
+        self.t_manual = QRadioButton("קבוע")
+        self.t_free = QRadioButton("חופשי (בלי תופים)")
+        self.tgroup = QButtonGroup(self)
+        for b in (self.t_auto, self.t_manual, self.t_free):
+            self.tgroup.addButton(b)
+        self.bpm = QSpinBox()
+        self.bpm.setRange(40, 220)
+        self.bpm.setSuffix(" BPM")
+        self.bpm.setValue(int(settings.bpm or (info["tempo"] if info else 110)))
+        {"auto": self.t_auto, "manual": self.t_manual, "free": self.t_free}[settings.tempo_mode].setChecked(True)
+        th.addWidget(self.t_auto); th.addWidget(self.t_manual); th.addWidget(self.bpm); th.addWidget(self.t_free)
+        th.addStretch()
+        f.addRow("קצב:", tw)
+
+        self.meter = QComboBox()
+        self.meter.addItem("4/4 (רגיל)", 4)
+        self.meter.addItem("3/4 (ואלס)", 3)
+        self.meter.setCurrentIndex(0 if settings.meter == 4 else 1)
+        f.addRow("משקל:", self.meter)
+        self.cpb = QComboBox()
+        self.cpb.addItem("שניים בתיבה", 2)
+        self.cpb.addItem("אחד בתיבה", 1)
+        self.cpb.setCurrentIndex(0 if settings.chords_per_bar == 2 else 1)
+        f.addRow("החלפת אקורדים:", self.cpb)
+        self.accomp_db = _slider(-12, 9, settings.accomp_db, _db)
+        self.reverb = _slider(0, 200, settings.reverb, lambda x: f"{x}%")
+        f.addRow("עוצמת הליווי:", self.accomp_db)
+        f.addRow("הדהוד (ריוורב):", self.reverb)
+        v.addWidget(g)
+
+        # ---- אקורדים
+        g = QGroupBox("אקורדים - למוזיקאים")
+        gv = QVBoxLayout(g)
+        hint = QLabel("כתוב תיבה אחרי תיבה, מופרדות בקו ישר. כמה אקורדים באותה תיבה - עם רווח ביניהם. "
+                      "מקף = כמו האקורד הקודם. השאר ריק כדי שהתוכנה תבחר לבד. דוגמה:")
+        hint.setObjectName("small")
+        hint.setWordWrap(True)
+        gv.addWidget(hint)
+        ex = QLabel("Am | Dm E | Am | -")
+        ex.setObjectName("small")
+        ex.setLayoutDirection(Qt.LeftToRight)
+        ex.setAlignment(Qt.AlignLeft)
+        gv.addWidget(ex)
+        self.chords = QPlainTextEdit()
+        self.chords.setLayoutDirection(Qt.LeftToRight)
+        self.chords.setPlainText(settings.chords_text)
+        if info:
+            self.chords.setPlaceholderText(info["chords"])
+        self.chords.setMinimumHeight(110)
+        gv.addWidget(self.chords)
+        row = QHBoxLayout()
+        b_fill = QPushButton("הכנס את האקורדים שזוהו לעריכה")
+        b_fill.setEnabled(bool(info))
+        b_fill.clicked.connect(lambda: self.chords.setPlainText(info["chords"]))
+        b_clear = QPushButton("נקה (אוטומטי)")
+        b_clear.clicked.connect(self.chords.clear)
+        row.addWidget(b_fill); row.addWidget(b_clear); row.addStretch()
+        gv.addLayout(row)
+        v.addWidget(g)
+
+        # ---- שמירה
+        g = QGroupBox("שמירה")
+        f = QFormLayout(g)
+        self.fmt = QComboBox()
+        self.fmt.addItem("MP3", "mp3")
+        self.fmt.addItem("WAV (איכות מלאה)", "wav")
+        self.fmt.setCurrentIndex(0 if fmt == "mp3" else 1)
+        self.extras = QCheckBox("שמור גם קול וליווי בקבצים נפרדים + קובץ MIDI")
+        self.extras.setChecked(extras)
+        f.addRow("סוג קובץ:", self.fmt)
+        f.addRow("", self.extras)
+        v.addWidget(g)
+
+        # ---- כפתורים
+        row = QHBoxLayout()
+        ok = QPushButton("אישור")
+        ok.setStyleSheet("background:#2c7a3f; color:white; font-weight:bold;")
+        ok.clicked.connect(self.accept)
+        reset = QPushButton("החזר הכול לרגיל")
+        reset.clicked.connect(self.reset)
+        cancel = QPushButton("ביטול")
+        cancel.clicked.connect(self.reject)
+        row.addWidget(ok, 2); row.addWidget(reset, 1); row.addWidget(cancel, 1)
+        outer.addLayout(row)
+
+    def reset(self):
+        self.result_settings = Settings()
+        self.result_extras, self.result_fmt = False, "mp3"
+        self.done(2)
+
+    def _key(self):
+        d = self.key.currentData()
+        if not d:
+            return None
+        t, m = d.split(":")
+        return (int(t), m)
+
+    def settings(self) -> Settings:
+        mode = "auto" if self.t_auto.isChecked() else ("manual" if self.t_manual.isChecked() else "free")
+        return Settings(
+            denoise=self.denoise.slider.value(), tune=self.tune.slider.value(),
+            key=self._key(), tempo_mode=mode, bpm=self.bpm.value(),
+            meter=self.meter.currentData(), chords_per_bar=self.cpb.currentData(),
+            chords_text=self.chords.toPlainText().strip(), transpose=self.transpose.value(),
+            voice_db=self.voice_db.slider.value(), accomp_db=self.accomp_db.slider.value(),
+            reverb=self.reverb.slider.value())

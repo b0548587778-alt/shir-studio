@@ -24,6 +24,8 @@ def test_pitch_correction_reduces_out_of_tune():
     x, truth = sing(bpm=110, wobble=0.25, detune=0.3, repeats=2)
     s = Song(x)
     s.prepare(lambda p, m=None: None)
+    from shir_studio.pipeline import Settings
+    s._retune(Settings())
     f1, _ = yin(s.tuned)
 
     def spread(f):

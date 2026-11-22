@@ -34,6 +34,10 @@ class Analysis:
     key_index: int = 0
     strength: float = 0.8
     curve_term: np.ndarray = None
+    meter: int = 4                # פעמות בתיבה
+    chords_per_bar: int = 2
+    transpose: int = 0
+    auto: dict = field(default_factory=dict)     # הערכים שזוהו אוטומטית
 
 
 def _tuning_curve(midi, voiced):
@@ -161,13 +165,13 @@ def _tempo_beats(env):
     return tempo, beats, clarity
 
 
-def _downbeat(beats, notes):
-    """בוחר באיזו פעמה מתחילה תיבה (4 פעמות): שם מתחילים צלילים ארוכים."""
-    sc = np.zeros(4)
+def _downbeat(beats, notes, meter=4):
+    """בוחר באיזו פעמה מתחילה תיבה: שם מתחילים צלילים ארוכים."""
+    sc = np.zeros(meter)
     for nt in notes:
         k = int(np.argmin(np.abs(beats - nt.start)))
         if abs(beats[k] - nt.start) < 0.12:
-            sc[k % 4] += nt.end - nt.start
+            sc[k % meter] += nt.end - nt.start
     return int(np.argmax(sc))
 
 
@@ -257,6 +261,7 @@ def analyze(x: np.ndarray, strength: float = 0.8, progress=None):
                  curve_term=(curve - glob))
     if steady:
         a.downbeat = _downbeat(beats, notes)
+    a.auto = {"beats": beats, "tempo": tempo, "steady": steady, "keys": list(a.keys)}
     set_key(a, 0)
     if progress:
         progress(55)
@@ -286,13 +291,133 @@ def set_key(a, index):
     total = np.where(voiced, corr - a.curve_term * a.strength, 0)
     a.correction = gaussian_filter1d(total, 2)
     chords = theory.chords_for(a.tonic, a.mode)
-    if a.steady:
-        bars = a.beats[a.downbeat::2]          # אקורד כל חצי תיבה
-        segs = [(bars[i], bars[i + 1]) for i in range(len(bars) - 1)]
-        a.chords = _merge(_choose_chords(segs, a.notes, chords))
-    else:
-        a.chords = _merge(_choose_chords(_free_segments(a.notes, a.duration), a.notes, chords))
+    a.chords = _merge(_choose_chords(chord_segments(a), a.notes, chords))
     return a
+
+
+def chord_segments(a):
+    """הקטעים שלכל אחד מהם אקורד: חלק מתיבה (בקצב קבוע) או ~2 שניות (בקצב חופשי)."""
+    if a.steady:
+        step = max(1, a.meter // a.chords_per_bar)
+        b = a.beats[a.downbeat::step]
+        return [(b[i], b[i + 1]) for i in range(len(b) - 1)]
+    return _free_segments(a.notes, a.duration)
+
+
+def manual_grid(a, bpm):
+    """רשת פעמות בקצב שהמשתמש קבע, מיושרת לתחילת הצלילים."""
+    period = 60.0 / bpm
+    onsets = np.array([nt.start for nt in a.notes if nt.end - nt.start > 0.12] or [0.0])
+    best, best_sc = 0.0, -1
+    for ph in np.linspace(0, period, 40, endpoint=False):
+        d = np.abs(((onsets - ph) + period / 2) % period - period / 2)
+        sc = np.sum(np.exp(-(d / 0.05) ** 2))
+        if sc > best_sc:
+            best, best_sc = ph, sc
+    start = best - period * np.ceil(best / period)
+    return np.arange(start if start >= 0 else start + period, a.duration + period, period)
+
+
+def apply_settings(a, st):
+    """מחיל הגדרות מתקדמות של המשתמש על הניתוח האוטומטי."""
+    a.meter = st.meter
+    a.chords_per_bar = st.chords_per_bar if st.meter == 4 else 1
+    a.transpose = st.transpose
+    a.strength = st.tune / 100
+    # קצב
+    if st.tempo_mode == "free":
+        a.steady = False
+    elif st.tempo_mode == "manual" and st.bpm:
+        a.steady, a.beats, a.tempo = True, manual_grid(a, st.bpm), float(st.bpm)
+    else:
+        a.steady, a.beats, a.tempo = a.auto["steady"], a.auto["beats"], a.auto["tempo"]
+    if a.steady:
+        a.downbeat = _downbeat(a.beats, a.notes, a.meter)
+    # סולם
+    keys = list(a.auto["keys"])
+    if st.key is not None:
+        keys = [(st.key[0], st.key[1], 1.0)] + [k for k in keys if (k[0], k[1]) != tuple(st.key)]
+    a.keys = keys
+    set_key(a, 0 if st.key is not None else a.key_index)
+    # אקורדים שהמשתמש כתב
+    if st.chords_text and st.chords_text.strip():
+        a.chords = parse_chords(st.chords_text, chord_bars(a))
+    return a
+
+
+def chord_bars(a):
+    """גבולות התיבות (או הקטעים בקצב חופשי)."""
+    if a.steady:
+        b = a.beats[a.downbeat::a.meter]
+        return [(b[i], b[i + 1]) for i in range(len(b) - 1)]
+    return _free_segments(a.notes, a.duration)
+
+
+LETTERS = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
+
+
+def parse_chord(sym):
+    sym = sym.strip()
+    if not sym or sym[0].upper() not in LETTERS:
+        raise ValueError(sym)
+    root = LETTERS[sym[0].upper()]
+    rest = sym[1:]
+    if rest.startswith(("#", "♯")):
+        root, rest = (root + 1) % 12, rest[1:]
+    elif rest.startswith(("b", "♭")):
+        root, rest = (root - 1) % 12, rest[1:]
+    minor = rest.startswith("m") and not rest.startswith("maj")
+    q = "min" if minor else "maj"
+    return {"degree": sym, "index": -1, "root": root, "quality": q,
+            "pcs": [(root + d) % 12 for d in theory.QUALITY[q]]}
+
+
+def parse_chords(text, bars):
+    """טקסט כמו 'Am | Dm E | Am' - תיבות מופרדות ב-|, כמה אקורדים בתיבה מחלקים אותה שווה."""
+    out = []
+    groups = [g.split() for g in text.replace("\n", "|").split("|")]
+    groups = [g for g in groups if g]
+    if not groups:
+        return out
+    prev = None
+    for i, (s, e) in enumerate(bars):
+        g = groups[i] if i < len(groups) else [groups[-1][-1]]
+        step = (e - s) / len(g)
+        for j, sym in enumerate(g):
+            ch = prev if sym in ("-", "%", "/") else parse_chord(sym)
+            if ch is None:
+                continue
+            out.append((s + j * step, s + (j + 1) * step, ch))
+            prev = ch
+    return _merge_same(out)
+
+
+def _merge_same(raw):
+    out = []
+    for s, e, c in raw:
+        if out and out[-1][2]["root"] == c["root"] and out[-1][2]["quality"] == c["quality"]:
+            out[-1] = (out[-1][0], e, out[-1][2])
+        else:
+            out.append((s, e, c))
+    return out
+
+
+NAMES = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"]
+
+
+def chords_as_text(a):
+    """האקורדים שזוהו, בכתיב של מוזיקאים, תיבה אחרי תיבה."""
+    bars = chord_bars(a)
+    parts = []
+    for s, e in bars:
+        inside = []
+        for cs, ce, c in a.chords:
+            if cs < e - 0.05 and ce > s + 0.05:
+                name = NAMES[c["root"]] + ("m" if c["quality"] == "min" else "")
+                if not inside or inside[-1] != name:
+                    inside.append(name)
+        parts.append(" ".join(inside[:4]) or "-")
+    return " | ".join(parts)
 
 
 def _merge(raw):
