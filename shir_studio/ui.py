@@ -148,7 +148,8 @@ class MainWindow(QMainWindow):
 
     def _build_record(self):
         w, v = self._page()
-        v.addWidget(label("מקליט... שיר עכשיו", "title"))
+        self.rec_title = label("מקליט... שיר עכשיו", "title")
+        v.addWidget(self.rec_title)
         self.rec_time = label("0:00", "big")
         v.addWidget(self.rec_time)
         self.level = QProgressBar()
@@ -287,13 +288,26 @@ class MainWindow(QMainWindow):
         except AudioError as e:
             self.error(str(e))
             return
-        self.rec_start = time.time()
-        self.rec_time.setText("0:00")
+        # ספירה לאחור 3-2-1, כדי שתחילת השיר לא תיחתך
+        self.countdown_end = time.time() + 3
+        self.rec_start = None
+        self.rec_title.setText("מתכוננים...")
+        self.rec_time.setText("3")
         self.stack.setCurrentWidget(self.rec)
         self.timer.start(100)
 
     def _tick(self):
-        s = int(time.time() - self.rec_start)
+        now = time.time()
+        if self.rec_start is None:
+            left = self.countdown_end - now
+            if left > 0:
+                self.rec_time.setText(str(int(left) + 1))
+                self.level.setValue(min(100, int(self.recorder.level * 400)))
+                return
+            self.recorder._chunks.clear()       # מתחילים את ההקלטה רק עכשיו
+            self.rec_start = now
+            self.rec_title.setText("מקליט... שיר עכשיו")
+        s = int(now - self.rec_start)
         self.rec_time.setText(f"{s // 60}:{s % 60:02d}")
         self.level.setValue(min(100, int(self.recorder.level * 400)))
         if s >= 15 * 60:
@@ -307,6 +321,10 @@ class MainWindow(QMainWindow):
 
     def stop_recording(self):
         self.timer.stop()
+        if self.rec_start is None:          # לחצו 'סיום' עוד בזמן הספירה
+            self.recorder.stop()
+            self.go_home()
+            return
         data = self.recorder.stop()
         if len(data) < SR * 2:
             self.error("ההקלטה קצרה מדי.\nלחץ 'הקלט שיר' ושיר לפחות כמה שניות.")
