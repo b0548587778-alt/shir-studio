@@ -125,7 +125,7 @@ def _onset_env(x, notes):
     for nt in notes:
         k = int(nt.start * 100)
         if 0 <= k < n:
-            env[k] += 0.6 + 0.6 * min(1.0, (nt.end - nt.start) / 0.5)
+            env[k] += 0.3 + 0.3 * min(1.0, (nt.end - nt.start) / 0.5)
     return gaussian_filter1d(env, 1.5)
 
 
@@ -148,7 +148,7 @@ def _tempo_beats(env):
     cum = env.copy()
     back = np.full(n, -1)
     lo, hi = int(lag * 0.8), int(lag * 1.25)
-    tight = 100
+    tight = 30
     for i in range(hi, n):
         prev = np.arange(i - hi, i - lo + 1)
         pen = -tight * np.log((i - prev) / lag) ** 2
@@ -248,13 +248,14 @@ def analyze(x: np.ndarray, strength: float = 0.8, progress=None):
     tempo, beats, clarity = _tempo_beats(env)
     if progress:
         progress(45)
-    on_beat = 0
-    long_notes = [nt for nt in notes if nt.end - nt.start > 0.12]
-    for nt in long_notes:
-        if len(beats) and np.min(np.abs(beats - nt.start)) < 0.09:
-            on_beat += 1
-    ratio = on_beat / max(1, len(long_notes))
-    steady = bool(clarity > 0.25 and ratio > 0.45 and len(beats) >= 8)
+    # קצב קבוע? בודקים כמה תחילות צלילים נופלות על רשת שמיניות של הפעמות
+    ons = [nt.start for nt in notes if nt.end - nt.start > 0.12]
+    if len(beats) >= 8 and ons:
+        grid = np.sort(np.concatenate([beats, (beats[:-1] + beats[1:]) / 2]))
+        on8 = float(np.mean([np.min(np.abs(grid - t)) < 0.06 for t in ons]))
+    else:
+        on8 = 0.0
+    steady = bool(clarity > 0.18 and on8 > 0.4)
     a = Analysis(f0=f0, midi_c=mc0, tuning=glob, tonic=ranked[0][0], mode=ranked[0][1], notes=notes,
                  correction=None, beats=beats, tempo=tempo, steady=steady,
                  downbeat=0, duration=duration, keys=_distinct(ranked[:1] + theory.rank_keys(w, None)), strength=strength,
