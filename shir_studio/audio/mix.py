@@ -86,7 +86,7 @@ def pan_gains(p):
     return np.cos(ang), np.sin(ang)
 
 
-def mix(voice, tracks, lead, style, accomp_db=0.0, voice_db=0.0, reverb=1.0, stems=False):
+def mix(voice, tracks, lead, style, accomp_db=0.0, voice_db=0.0, reverb=1.0, stems=False, harmony=None):
     """voice: מונו מעובד. tracks: [(spec, buf)]. lead: שניות מבוא לפני השירה."""
     n = max(len(t[1]) for t in tracks) if tracks else len(voice) + int(lead * SR)
     n = max(n, len(voice) + int(lead * SR) + SR)
@@ -115,6 +115,16 @@ def mix(voice, tracks, lead, style, accomp_db=0.0, voice_db=0.0, reverb=1.0, ste
         acc *= duck[:, None]
     rv = style.get("reverb", 0.2) * reverb
     vst = np.stack([vbuf, vbuf], axis=1) * 0.707
+    if harmony is not None:
+        h = process_voice(harmony.astype(np.float64))
+        h *= 10 ** (-6 / 20) * (vr / max(rms(h[np.abs(h) > 0.02]) if np.any(np.abs(h) > 0.02) else 1, 1e-9))
+        h *= 10 ** (voice_db / 20)
+        hb = np.zeros(n)
+        d = s + int(0.018 * SR)                     # השהיה קטנה - נשמע כמו זמר נוסף
+        hb[d:d + len(h)] = h[: max(0, min(len(h), n - d))]
+        gl, gr = pan_gains(0.35)
+        vst[:, 0] += hb * gl * 0.9
+        vst[:, 1] += hb * gr * 0.9
     vst = add_reverb(vst, rv * 0.7, 1.6)
     acc = add_reverb(acc, rv, 2.0)
     out = vst + acc

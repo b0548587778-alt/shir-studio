@@ -1,0 +1,186 @@
+{
+ "name": "כלייזמר",
+ "description": "קלרינט, כינור ואקורדיון - כמו בשמחה של פעם",
+ "order": 6,
+ "reverb": 0.2,
+ "accomp_db": -4,
+ "tracks": [
+  {
+   "instrument": "acoustic_bass",
+   "octave": 2,
+   "volume": 0.9,
+   "pan": 0,
+   "bar": [
+    {
+     "t": 0,
+     "d": 0.8,
+     "n": "root"
+    },
+    {
+     "t": 2,
+     "d": 0.8,
+     "n": "fifth_low"
+    }
+   ]
+  },
+  {
+   "instrument": "accordion",
+   "octave": 4,
+   "volume": 0.6,
+   "pan": -0.3,
+   "bar": [
+    {
+     "t": 1,
+     "d": 0.4,
+     "n": "chord"
+    },
+    {
+     "t": 1.5,
+     "d": 0.3,
+     "n": "chord",
+     "v": 0.5
+    },
+    {
+     "t": 3,
+     "d": 0.4,
+     "n": "chord"
+    },
+    {
+     "t": 3.5,
+     "d": 0.3,
+     "n": "chord",
+     "v": 0.5
+    }
+   ]
+  },
+  {
+   "instrument": "violin",
+   "octave": 4,
+   "volume": 0.35,
+   "pan": 0.35,
+   "enter": 4,
+   "bar": [
+    {
+     "t": 0,
+     "d": 4,
+     "n": "third",
+     "v": 0.5
+    }
+   ]
+  },
+  {
+   "instrument": "clarinet",
+   "octave": 4,
+   "volume": 0.3,
+   "pan": -0.15,
+   "enter": 8,
+   "bar": [
+    {
+     "t": 0,
+     "d": 1.8,
+     "n": "fifth",
+     "v": 0.5
+    },
+    {
+     "t": 2,
+     "d": 1.8,
+     "n": "octave",
+     "v": 0.45
+    }
+   ]
+  },
+  {
+   "instrument": "drums",
+   "volume": 0.6,
+   "crash_on_phrase": true,
+   "bar": [
+    {
+     "t": 0,
+     "n": "kick",
+     "v": 0.9
+    },
+    {
+     "t": 2,
+     "n": "kick",
+     "v": 0.8
+    },
+    {
+     "t": 1,
+     "n": "snare",
+     "v": 0.6
+    },
+    {
+     "t": 3,
+     "n": "snare",
+     "v": 0.65
+    },
+    {
+     "t": 1,
+     "n": "tambourine",
+     "v": 0.5
+    },
+    {
+     "t": 3,
+     "n": "tambourine",
+     "v": 0.5
+    }
+   ],
+   "fill": [
+    {
+     "t": 3,
+     "n": "snare",
+     "v": 0.5
+    },
+    {
+     "t": 3.5,
+     "n": "snare",
+     "v": 0.7
+    }
+   ]
+  }
+ ],
+ "free": [
+  {
+   "instrument": "accordion",
+   "octave": 4,
+   "volume": 0.6,
+   "pan": -0.3,
+   "seg": [
+    {
+     "t": 0,
+     "d": "seg",
+     "n": "chord",
+     "v": 0.5
+    }
+   ]
+  },
+  {
+   "instrument": "violin",
+   "octave": 4,
+   "volume": 0.4,
+   "pan": 0.3,
+   "seg": [
+    {
+     "t": 0,
+     "d": "seg",
+     "n": "third",
+     "v": 0.5
+    }
+   ]
+  },
+  {
+   "instrument": "acoustic_bass",
+   "octave": 2,
+   "volume": 0.6,
+   "pan": 0,
+   "seg": [
+    {
+     "t": 0,
+     "d": "seg",
+     "n": "root",
+     "v": 0.6
+    }
+   ]
+  }
+ ]
+}

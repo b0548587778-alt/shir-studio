@@ -29,6 +29,7 @@ class Settings:
     voice_db: float = 0
     accomp_db: float = 0
     reverb: int = 100           # אחוזים
+    harmony: str = "off"        # off / auto / above / below  - קול שני
 
     def prep_key(self):
         return (self.denoise,)
@@ -42,6 +43,8 @@ class Song:
         self.analysis = None
         self._prep = None
         self._tune_key = None
+        self.harmony = None
+        self._harm_key = None
         self.last_tracks = None
         self.last_lead = 0.0
         self.last_stems = None
@@ -65,6 +68,21 @@ class Song:
             self.tuned = shift(self.clean, a.f0, corr)
             self._tune_key = k
 
+    def _make_harmony(self, st):
+        a = self.analysis
+        if st.harmony == "off":
+            self.harmony = None
+            return
+        k = (st.harmony, st.tune, st.transpose, a.tonic, a.mode, a.key_index, len(a.chords),
+             st.chords_text, st.meter, st.tempo_mode, st.bpm)
+        if k != self._harm_key:
+            from .music.harmony import harmony_shift
+            hs = harmony_shift(a, st.harmony)
+            # הקול השני תמיד מתוקן מלא - שלא יתנגש עם הקול הראשי
+            full = a.correction / max(a.strength, 1e-3) if a.strength > 0 else a.correction
+            self.harmony = shift(self.clean, a.f0, full + st.transpose + hs)
+            self._harm_key = k
+
     def next_key(self):
         """הליווי לא מתאים? עוברים לסולם הבא בסדר ההתאמה."""
         set_key(self.analysis, self.analysis.key_index + 1)
@@ -76,11 +94,15 @@ class Song:
         apply_settings(self.analysis, st)
         progress(45, "מתקן את הקול...")
         self._retune(st)
+        if st.harmony != "off":
+            progress(50, "מוסיף קול שני...")
+        self._make_harmony(st)
         progress(55, "מוסיף ליווי...")
         tracks, lead = render(self.analysis, style, progress=lambda p: progress(55 + p * 0.3, None))
         progress(88, "מערבב את הקול והליווי...")
         out, stems = mix(self.tuned, tracks, lead, style, accomp_db=st.accomp_db,
-                         voice_db=st.voice_db, reverb=st.reverb / 100, stems=True)
+                         voice_db=st.voice_db, reverb=st.reverb / 100, stems=True,
+                         harmony=self.harmony)
         self.last_tracks, self.last_lead, self.last_stems = tracks, lead, stems
         progress(100, None)
         return out

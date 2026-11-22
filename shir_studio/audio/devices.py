@@ -49,18 +49,39 @@ class Recorder:
 
 
 class Player:
+    """השמעה עם מעקב אחרי המיקום בשיר."""
+
     def __init__(self):
-        self._lock = threading.Lock()
+        self.data = None
+        self.t0 = None
+        self.offset = 0.0
 
     def play(self, data: np.ndarray, start_sec: float = 0.0):
+        import time
         sd = _sd()
         try:
             sd.stop()
             sd.play(data[int(start_sec * SR):], SR)
         except Exception:
             raise AudioError("לא הצלחתי להשמיע.\nבדוק שהרמקולים או האוזניות מחוברים.")
+        self.data, self.offset, self.t0 = data, start_sec, time.time()
+
+    def position(self):
+        """שניות מתחילת השיר, או None אם לא מנגן."""
+        import time
+        if self.t0 is None or self.data is None:
+            return None
+        p = self.offset + time.time() - self.t0
+        if p >= len(self.data) / SR:
+            self.t0 = None
+            return None
+        return p
+
+    def length(self):
+        return 0 if self.data is None else len(self.data) / SR
 
     def stop(self):
+        self.t0 = None
         try:
             _sd().stop()
         except AudioError:

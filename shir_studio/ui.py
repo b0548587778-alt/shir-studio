@@ -7,7 +7,7 @@ import numpy as np
 from PySide6.QtCore import Qt, QThread, Signal, QTimer, QStandardPaths
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-    QStackedWidget, QProgressBar, QFileDialog, QMessageBox, QGridLayout, QButtonGroup,
+    QStackedWidget, QProgressBar, QFileDialog, QMessageBox, QGridLayout, QButtonGroup, QSlider,
 )
 
 from . import APP_NAME
@@ -34,7 +34,12 @@ QPushButton#green { background: #2c7a3f; }
 QPushButton#green:hover { background: #369249; }
 QPushButton#light { background: #dfe5ec; color: #24466b; }
 QPushButton#style { background: white; color: #1d2733; border: 3px solid #c9d2dc; font-size: 24px;
-                    min-height: 95px; text-align: center; padding: 8px; }
+                    min-height: 72px; text-align: center; padding: 6px; }
+QPushButton#harm { background: white; color: #24466b; border: 3px dashed #9fb0c2; font-size: 22px; min-height: 56px; }
+QPushButton#harm:checked { background: #fff4d6; border: 3px solid #d39b1e; color: #5a3d00; }
+QSlider::groove:horizontal { height: 12px; background: #dfe5ec; border-radius: 6px; }
+QSlider::handle:horizontal { width: 26px; margin: -8px 0; background: #2c7a3f; border-radius: 13px; }
+QSlider::sub-page:horizontal { background: #2c7a3f; border-radius: 6px; }
 QPushButton#style:checked { border: 4px solid #2c7a3f; background: #e6f3e9; }
 QProgressBar { border: 2px solid #24466b; border-radius: 14px; height: 40px; text-align: center;
                font-size: 22px; background: white; }
@@ -89,7 +94,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(APP_NAME)
         self.setLayoutDirection(Qt.RightToLeft)
         self.setStyleSheet(STYLE)
-        self.resize(900, 650)
+        self.resize(1000, 740)
         self.recorder = None
         self.player = Player()
         self.original = None
@@ -174,7 +179,7 @@ class MainWindow(QMainWindow):
             b.setObjectName("style")
             b.setCheckable(True)
             b.setCursor(Qt.PointingHandCursor)
-            b.setStyleSheet("QPushButton#style { font-size: 22px; }")
+            b.setStyleSheet("QPushButton#style { font-size: 20px; }")
             self.style_group.addButton(b, i)
             grid.addWidget(b, i // 2, i % 2)
             if i == 0:
@@ -182,6 +187,13 @@ class MainWindow(QMainWindow):
         grid.setColumnStretch(0, 1)
         grid.setColumnStretch(1, 1)
         v.addLayout(grid)
+        self.harm_btn = QPushButton("🎶  הוסף קול שני (הרמוניה) - כמו מקהלה")
+        self.harm_btn.setObjectName("harm")
+        self.harm_btn.setCheckable(True)
+        self.harm_btn.setCursor(Qt.PointingHandCursor)
+        self.harm_btn.toggled.connect(lambda on: setattr(self.settings, "harmony",
+                                                         ("auto" if on else "off")))
+        v.addWidget(self.harm_btn)
         v.addStretch()
         h = QHBoxLayout()
         go = big_button("✨  הכן את השיר", "green")
@@ -214,6 +226,16 @@ class MainWindow(QMainWindow):
         v.addWidget(label("השיר מוכן! ✔", "title"))
         self.done_hint = label("לחץ כדי להאזין ולהשוות", "hint")
         v.addWidget(self.done_hint)
+        pr = QHBoxLayout()
+        self.seek = QSlider(Qt.Horizontal)
+        self.seek.setRange(0, 1000)
+        self.seek.sliderReleased.connect(self._seek)
+        self.pos_label = QLabel("0:00")
+        self.pos_label.setMinimumWidth(110)
+        pr.addWidget(self.pos_label); pr.addWidget(self.seek, 1)
+        self.play_timer = QTimer(self)
+        self.play_timer.timeout.connect(self._update_pos)
+        self.play_timer.start(200)
         b_res = big_button("▶  האזן לשיר המוכן", "green")
         b_res.setMinimumHeight(90)
         b_res.clicked.connect(lambda: self._play(self.result))
@@ -229,7 +251,7 @@ class MainWindow(QMainWindow):
         h2.addWidget(b_org); h2.addWidget(b_stop)
         h3 = QHBoxLayout()
         h3.addWidget(b_other); h3.addWidget(b_key)
-        v.addWidget(b_res); v.addLayout(h2); v.addLayout(h3)
+        v.addWidget(b_res); v.addLayout(pr); v.addLayout(h2); v.addLayout(h3)
         v.addStretch()
         h = QHBoxLayout()
         b_save = big_button("💾  שמור", None)
@@ -343,6 +365,9 @@ class MainWindow(QMainWindow):
             self.settings, self.save_extras, self.save_fmt = Settings(), False, "mp3"
         else:
             return
+        self.harm_btn.blockSignals(True)
+        self.harm_btn.setChecked(self.settings.harmony != "off")
+        self.harm_btn.blockSignals(False)
         if remake and self.song:
             self.make_song()
 
@@ -381,11 +406,33 @@ class MainWindow(QMainWindow):
         self.done_hint.setText(hint)
         self.stack.setCurrentWidget(self.done)
 
-    def _play(self, data):
+    def _play(self, data, start=0.0):
         try:
-            self.player.play(data)
+            self.player.play(data, start)
         except AudioError as e:
             self.error(str(e))
+
+    @staticmethod
+    def _fmt(sec):
+        sec = int(sec)
+        return f"{sec // 60}:{sec % 60:02d}"
+
+    def _update_pos(self):
+        if self.stack.currentWidget() is not self.done or self.seek.isSliderDown():
+            return
+        p = self.player.position()
+        total = self.player.length() or (len(self.result) / SR if self.result is not None else 0)
+        if p is None:
+            self.pos_label.setText(f"{self._fmt(0)} / {self._fmt(total)}")
+            return
+        self.seek.setValue(int(1000 * p / max(total, 1e-6)))
+        self.pos_label.setText(f"{self._fmt(p)} / {self._fmt(total)}")
+
+    def _seek(self):
+        data = self.player.data if self.player.data is not None else self.result
+        if data is None:
+            return
+        self._play(data, self.seek.value() / 1000 * len(data) / SR)
 
     def save_result(self):
         ext = self.save_fmt

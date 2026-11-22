@@ -1,19 +1,94 @@
 {
-  "name": "ווקאלי - בלי כלים",
-  "description": "ליווי של קולות בלבד. מתאים לספירת העומר ולבין המצרים",
-  "order": 5,
-  "reverb": 0.3,
-  "accomp_db": -5,
-  "tracks": [
-    {"instrument": "choir", "octave": 3, "volume": 0.9, "pan": 0,
-     "bar": [{"t": 0, "d": 4, "n": "chord", "v": 0.6}]},
-    {"instrument": "bass_voice", "octave": 2, "volume": 0.8, "pan": 0,
-     "bar": [{"t": 0, "d": 0.6, "n": "root", "v": 0.8}, {"t": 2, "d": 0.6, "n": "fifth_low", "v": 0.7}]},
-    {"instrument": "choir_oo", "octave": 4, "volume": 0.35, "pan": 0.3,
-     "bar": [{"t": 1, "d": 0.4, "n": "chord", "v": 0.5}, {"t": 3, "d": 0.4, "n": "chord", "v": 0.5}]}
-  ],
-  "free": [
-    {"instrument": "choir", "octave": 3, "volume": 0.9, "pan": 0, "seg": [{"t": 0, "d": "seg", "n": "chord", "v": 0.6}]},
-    {"instrument": "bass_voice", "octave": 2, "volume": 0.6, "pan": 0, "seg": [{"t": 0, "d": "seg", "n": "root", "v": 0.6}]}
-  ]
+ "name": "ווקאלי - בלי כלים",
+ "description": "ליווי של קולות בלבד. מתאים לספירת העומר ולבין המצרים",
+ "order": 7,
+ "reverb": 0.3,
+ "accomp_db": -5,
+ "tracks": [
+  {
+   "instrument": "choir",
+   "octave": 3,
+   "volume": 0.9,
+   "pan": 0,
+   "bar": [
+    {
+     "t": 0,
+     "d": 4,
+     "n": "chord",
+     "v": 0.6
+    }
+   ]
+  },
+  {
+   "instrument": "bass_voice",
+   "octave": 2,
+   "volume": 0.8,
+   "pan": 0,
+   "bar": [
+    {
+     "t": 0,
+     "d": 0.6,
+     "n": "root",
+     "v": 0.8
+    },
+    {
+     "t": 2,
+     "d": 0.6,
+     "n": "fifth_low",
+     "v": 0.7
+    }
+   ]
+  },
+  {
+   "instrument": "choir_oo",
+   "octave": 4,
+   "volume": 0.35,
+   "pan": 0.3,
+   "bar": [
+    {
+     "t": 1,
+     "d": 0.4,
+     "n": "chord",
+     "v": 0.5
+    },
+    {
+     "t": 3,
+     "d": 0.4,
+     "n": "chord",
+     "v": 0.5
+    }
+   ],
+   "enter": 4
+  }
+ ],
+ "free": [
+  {
+   "instrument": "choir",
+   "octave": 3,
+   "volume": 0.9,
+   "pan": 0,
+   "seg": [
+    {
+     "t": 0,
+     "d": "seg",
+     "n": "chord",
+     "v": 0.6
+    }
+   ]
+  },
+  {
+   "instrument": "bass_voice",
+   "octave": 2,
+   "volume": 0.6,
+   "pan": 0,
+   "seg": [
+    {
+     "t": 0,
+     "d": "seg",
+     "n": "root",
+     "v": 0.6
+    }
+   ]
+  }
+ ]
 }

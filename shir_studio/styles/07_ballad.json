@@ -1,0 +1,151 @@
+{
+ "name": "בלדה חסידית",
+ "description": "פסנתר, מיתרים ותופים עדינים - מרגש ושקט",
+ "order": 3,
+ "reverb": 0.32,
+ "accomp_db": -5,
+ "tracks": [
+  {
+   "instrument": "piano",
+   "octave": 3,
+   "volume": 1.0,
+   "pan": -0.1,
+   "bar": [
+    {
+     "t": 0,
+     "d": 2,
+     "n": "root_low",
+     "v": 0.55
+    },
+    {
+     "t": 0,
+     "d": 1.9,
+     "n": "chord",
+     "v": 0.45
+    },
+    {
+     "t": 2,
+     "d": 2,
+     "n": "fifth_low",
+     "v": 0.5
+    },
+    {
+     "t": 2,
+     "d": 1.9,
+     "n": "chord",
+     "v": 0.4
+    }
+   ]
+  },
+  {
+   "instrument": "slow_strings",
+   "octave": 4,
+   "volume": 0.45,
+   "pan": 0.2,
+   "enter": 4,
+   "bar": [
+    {
+     "t": 0,
+     "d": 4,
+     "n": "chord",
+     "v": 0.45
+    }
+   ]
+  },
+  {
+   "instrument": "acoustic_bass",
+   "octave": 2,
+   "volume": 0.5,
+   "pan": 0,
+   "enter": 4,
+   "bar": [
+    {
+     "t": 0,
+     "d": 1.8,
+     "n": "root",
+     "v": 0.5
+    },
+    {
+     "t": 2,
+     "d": 1.8,
+     "n": "fifth_low",
+     "v": 0.45
+    }
+   ]
+  },
+  {
+   "instrument": "drums",
+   "volume": 0.35,
+   "enter": 8,
+   "crash_on_phrase": true,
+   "bar": [
+    {
+     "t": 0,
+     "n": "kick",
+     "v": 0.6
+    },
+    {
+     "t": 2,
+     "n": "snare",
+     "v": 0.45
+    },
+    {
+     "t": 0,
+     "n": "hat",
+     "v": 0.3
+    },
+    {
+     "t": 1,
+     "n": "hat",
+     "v": 0.3
+    },
+    {
+     "t": 2,
+     "n": "hat",
+     "v": 0.3
+    },
+    {
+     "t": 3,
+     "n": "hat",
+     "v": 0.3
+    }
+   ]
+  }
+ ],
+ "free": [
+  {
+   "instrument": "piano",
+   "octave": 3,
+   "volume": 1.0,
+   "pan": -0.1,
+   "seg": [
+    {
+     "t": 0,
+     "d": "seg",
+     "n": "root_low",
+     "v": 0.55
+    },
+    {
+     "t": 0.1,
+     "d": "seg",
+     "n": "chord",
+     "v": 0.45
+    }
+   ]
+  },
+  {
+   "instrument": "slow_strings",
+   "octave": 4,
+   "volume": 0.45,
+   "pan": 0.2,
+   "seg": [
+    {
+     "t": 0,
+     "d": "seg",
+     "n": "chord",
+     "v": 0.45
+    }
+   ]
+  }
+ ]
+}

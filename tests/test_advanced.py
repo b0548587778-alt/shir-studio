@@ -30,3 +30,16 @@ def test_parse_chords():
     ch = parse_chords("Am | F# Bbm | -", [(0, 2), (2, 4), (4, 6)])
     assert [(c["root"], c["quality"]) for _, _, c in ch] == [(9, "min"), (6, "maj"), (10, "min")]
     assert ch[-1][1] == 6
+
+
+def test_harmony_is_a_third_or_fourth_away():
+    from shir_studio.audio.pitch import yin, hz_to_midi
+    x, _ = sing(bpm=110, repeats=1)
+    s = Song(x)
+    out = s.make(load_styles()[-1], lambda p, m=None: None, Settings(harmony="above"))
+    assert np.isfinite(out).all()
+    f, _ = yin(s.harmony)
+    fm, _ = yin(s.tuned)
+    v = (f > 0) & (fm > 0)
+    d = np.round(hz_to_midi(f[v]) - hz_to_midi(fm[v]))
+    assert np.mean((d >= 3) & (d <= 5)) > 0.8

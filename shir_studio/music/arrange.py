@@ -122,12 +122,24 @@ def render(a, style, progress=None, rng_seed=7):
                         for m in _note_for(ev["n"], tonic_chord, oct_):
                             play(out, inst, m, dur, 0.6, t)
                     break
-                for ev in bar_events:
+                # מבנה: מבוא (2 תיבות), כלים שנכנסים בהדרגה, מילוי תופים בסוף כל משפט
+                phrase_bar = bar - 2
+                if bar >= 2 and phrase_bar < tr.get("enter", 0):
+                    bar += 1
+                    continue
+                evs = bar_events
+                end_of_phrase = bar == 1 or (bar >= 2 and phrase_bar % 8 == 7)
+                if inst == "drums" and end_of_phrase and tr.get("fill"):
+                    f0 = min(e["t"] for e in tr["fill"])
+                    evs = [e for e in bar_events if e["t"] < f0] + [e for e in tr["fill"] if e["t"] < meter]
+                if inst == "drums" and tr.get("crash_on_phrase") and bar >= 2 and phrase_bar % 8 == 0:
+                    t = tl.beat_time(pos0)
+                    out.add(synth.render_drum("crash", 0.55), t, ("crash", 0.3, 0.55))
+                lift = 0.82 if bar < 2 else (0.9 if phrase_bar < 8 else 1.0)
+                for ev in evs:
                     p = pos0 + ev["t"]
                     t = tl.beat_time(p) + rng.normal(0, 0.006)
-                    v = float(np.clip(ev.get("v", 0.8) + rng.normal(0, 0.06), 0.1, 1.0))
-                    if bar < 2:
-                        v *= 0.85
+                    v = float(np.clip((ev.get("v", 0.8) + rng.normal(0, 0.06)) * lift, 0.1, 1.0))
                     if inst == "drums":
                         if bar == 0 and ev["n"] in ("snare", "tambourine"):
                             continue

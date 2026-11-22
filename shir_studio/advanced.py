@@ -81,6 +81,12 @@ class AdvancedDialog(QDialog):
         f.addRow("תיקון זיופים:", self.tune)
         f.addRow("עוצמת הקול:", self.voice_db)
         f.addRow("העברת סולם (טרנספוזיציה):", self.transpose)
+        self.harmony = QComboBox()
+        for label, val in (("בלי", "off"), ("אוטומטי", "auto"), ("מעל המנגינה", "above"),
+                           ("מתחת למנגינה", "below")):
+            self.harmony.addItem(label, val)
+        self.harmony.setCurrentIndex(max(0, self.harmony.findData(settings.harmony)))
+        f.addRow("קול שני (הרמוניה):", self.harmony)
         v.addWidget(g)
 
         # ---- מוזיקה
@@ -205,4 +211,4 @@ class AdvancedDialog(QDialog):
             meter=self.meter.currentData(), chords_per_bar=self.cpb.currentData(),
             chords_text=self.chords.toPlainText().strip(), transpose=self.transpose.value(),
             voice_db=self.voice_db.slider.value(), accomp_db=self.accomp_db.slider.value(),
-            reverb=self.reverb.slider.value())
+            reverb=self.reverb.slider.value(), harmony=self.harmony.currentData())
