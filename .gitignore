@@ -3,3 +3,10 @@ build/
 dist/
 *.spec
 
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.jks
+*.keystore
