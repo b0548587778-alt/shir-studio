@@ -28,7 +28,7 @@ SWAPPABLE = {"piano": "פסנתר", "guitar": "גיטרה", "steel_guitar": "ג�
              "violin": "כינור", "clarinet": "קלרינט", "flute": "חליל", "trumpet": "חצוצרה",
              "brass": "כלי נשיפה", "strings": "כלי מיתר", "slow_strings": "מיתרים רכים",
              "organ": "עוגב", "choir": "מקהלה", "choir_oo": "מקהלה (אוּ)",
-             "bass": "בס", "acoustic_bass": "קונטרבס"}
+             "cello": "צ'לו", "bass": "בס", "acoustic_bass": "קונטרבס"}
 
 
 def instruments_of(style):

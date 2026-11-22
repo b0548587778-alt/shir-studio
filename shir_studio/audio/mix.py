@@ -162,6 +162,23 @@ def choir_copies(vst, copies=4, depth=0.35):
     return out * depth / copies * 2
 
 
+WIDE = {"piano", "strings", "slow_strings", "guitar", "steel_guitar", "choir", "choir_oo", "organ",
+        "accordion", "cello"}
+
+
+def widen(x, ms=9.0):
+    d = int(ms / 1000 * SR)
+    lo = sosfilt(butter(2, 300, fs=SR, output="sos"), x)          # הבס נשאר באמצע
+    hi = x - lo
+    r = np.concatenate([np.zeros(d), hi[:-d]]) if d else hi
+    return lo + hi, lo + 0.85 * r + 0.15 * hi
+
+
+def room(x):
+    """הדהוד קצר של חדר הקלטה (0.5 שניות) לתופים."""
+    return add_reverb(np.stack([x, x], axis=1), 1.0, 0.5) - np.stack([x, x], axis=1)
+
+
 def pan_gains(p):
     ang = (p + 1) * np.pi / 4
     return np.cos(ang), np.sin(ang)
@@ -184,8 +201,17 @@ def mix(voice, tracks, lead, style, accomp_db=0.0, voice_db=0.0, reverb=1.0, ste
         r = rms(b[np.abs(b) > 1e-4]) if np.any(np.abs(b) > 1e-4) else 1.0
         b = b / r * spec.get("volume", 0.7)
         gl, gr = pan_gains(spec.get("pan", 0))
-        acc[:, 0] += b * gl
-        acc[:, 1] += b * gr
+        inst = spec.get("instrument")
+        if inst in WIDE:
+            # רוחב סטריאו: השהיה קטנה ושונה בכל צד (כמו שני מיקרופונים) - הכלי נשמע 'רחב'
+            dl, dr = widen(b)
+            acc[:, 0] += dl * gl
+            acc[:, 1] += dr * gr
+        else:
+            acc[:, 0] += b * gl
+            acc[:, 1] += b * gr
+        if inst == "drums":
+            acc += room(b) * 0.22                 # צליל של חדר - תופים 'חיים' ולא יבשים
     if tracks:
         ar = rms(acc[s:s + len(v)]) if len(v) else rms(acc)
         target = vr * 10 ** ((style.get("accomp_db", -5) + accomp_db) / 20)

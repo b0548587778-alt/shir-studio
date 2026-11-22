@@ -405,6 +405,7 @@ class MainWindow(QMainWindow):
         self.song = Song(data)
         self.settings.key = None
         self.settings.chords_text = ""
+        self.settings.sections = None
         if self.settings.tempo_mode == "manual" and not self.metro_on.isChecked():
             self.settings.tempo_mode = "auto"
         self.history = History()

@@ -21,6 +21,9 @@ def sing(bpm=120, detune=0.0, drift=0.0, wobble=0.25, seed=0, repeats=2):
     t0 = 0.5
     truth = []
     for m, b in seq:
+        if m is None:                       # הפסקה (נשימה בין משפטים)
+            t0 += b * beat
+            continue
         a, e = int(t0 * SR), int((t0 + b * beat * 0.92) * SR)
         err = rng.uniform(-wobble, wobble)
         tt = np.arange(e - a) / SR

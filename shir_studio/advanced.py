@@ -157,6 +157,28 @@ class AdvancedDialog(QDialog):
                     self.swaps[inst] = cb
                 v.addWidget(g)
 
+        # ---- חלקי השיר (בית / פזמון)
+        self.sec_boxes = []
+        self.sec_auto = []
+        phrases = (info or {}).get("phrases") or []
+        if phrases:
+            g = QGroupBox("חלקי השיר - בית או פזמון")
+            f = QFormLayout(g)
+            h = QLabel("בבית הליווי רגוע, ובפזמון מלא וחזק. התוכנה מנחשת לבד - אפשר לשנות.")
+            h.setObjectName("small")
+            h.setWordWrap(True)
+            f.addRow(h)
+            cur = settings.sections or []
+            for i, (s, e, lvl) in enumerate(phrases):
+                cb = QComboBox()
+                cb.addItem("בית (רגוע)", 0)
+                cb.addItem("פזמון (מלא)", 1)
+                cb.setCurrentIndex(int(cur[i]) if i < len(cur) else int(lvl))
+                f.addRow(f"משפט {i + 1}  (\u2066{int(s) // 60}:{int(s) % 60:02d}\u2069):", cb)
+                self.sec_boxes.append(cb)
+                self.sec_auto.append(int(lvl))
+            v.addWidget(g)
+
         # ---- אקורדים
         g = QGroupBox("אקורדים - למוזיקאים")
         gv = QVBoxLayout(g)
@@ -224,6 +246,10 @@ class AdvancedDialog(QDialog):
         t, m = d.split(":")
         return (int(t), m)
 
+    def _sections(self):
+        vals = [cb.currentData() for cb in self.sec_boxes]
+        return vals if vals and vals != self.sec_auto else None
+
     def settings(self) -> Settings:
         mode = "auto" if self.t_auto.isChecked() else ("manual" if self.t_manual.isChecked() else "free")
         return Settings(
@@ -233,5 +259,5 @@ class AdvancedDialog(QDialog):
             chords_text=self.chords.toPlainText().strip(), transpose=self.transpose.value(),
             voice_db=self.voice_db.slider.value(), accomp_db=self.accomp_db.slider.value(),
             reverb=self.reverb.slider.value(), harmony=self.harmony.currentData(),
-            choir=self.choir.isChecked(),
+            choir=self.choir.isChecked(), sections=self._sections(),
             swaps={k: cb.currentData() for k, cb in self.swaps.items() if cb.currentData() != k} or None)
