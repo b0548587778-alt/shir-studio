@@ -32,6 +32,7 @@ class Settings:
     harmony: str = "off"        # off / auto / above / below / three  - קול שני (three = שלושה קולות)
     choir: bool = False         # מקהלה: כמה עותקים של הקול עם הבדלים קטנים
     swaps: dict = None          # החלפת כלים בסגנון: {"clarinet": "violin"}
+    sections: list = None       # בית/פזמון ידני לכל משפט: [0, 1, 0, 1] (None = אוטומטי)
 
     def prep_key(self):
         return (self.denoise,)
@@ -95,6 +96,13 @@ class Song:
         if self.analysis is None or self._prep != st.prep_key():
             self.prepare(progress, st)
         apply_settings(self.analysis, st)
+        self.analysis.sections_override = st.sections
+        # סגנון ווקאלי: מקהלה שלמה מהקול של הזמר עצמו (אם המשתמש לא בחר אחרת)
+        voices = style.get("voices")
+        if voices and st.harmony == "off":
+            import dataclasses
+            st = dataclasses.replace(st, harmony=voices.get("harmony", "three"),
+                                     choir=voices.get("choir", st.choir))
         progress(45, "מתקן את הקול...")
         self._retune(st)
         if st.harmony != "off":
@@ -125,10 +133,25 @@ class Song:
         t = np.arange(len(f0)) * FRAME_SEC
         return t, before, after, [(nt.start, nt.end, nt.pitch) for nt in a.notes]
 
+    def phrases(self, style=None):
+        """משפטי השיר: [(התחלה, סוף, 0=בית/1=פזמון)] - למסך העריכה."""
+        from .music import arrange
+        a = self.analysis
+        if a is None or not a.steady or not a.notes:
+            return []
+        tl = arrange.Timeline(a)
+        lv_end = max(nt.end for nt in a.notes)
+        times = arrange.phrase_times(a, tl, lv_end)
+        saved, a.sections_override = getattr(a, "sections_override", None), None   # הניחוש האוטומטי
+        lv = arrange.sections(a, tl, lv_end)
+        a.sections_override = saved
+        return [(s, e, l) for (s, e), l in zip(times, lv)]
+
     def info(self):
         a = self.analysis
         return {"key": key_name(a.tonic, a.mode), "tempo": int(round(a.tempo)), "steady": a.steady,
-                "tonic": a.tonic, "mode": a.mode, "chords": chords_as_text(a), "meter": a.meter}
+                "tonic": a.tonic, "mode": a.mode, "chords": chords_as_text(a), "meter": a.meter,
+                "phrases": self.phrases()}
 
     def export_extras(self, folder, base):
         """קבצים נפרדים לקול ולליווי (WAV) וקובץ MIDI."""

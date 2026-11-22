@@ -90,5 +90,12 @@
     }
    ]
   }
- ]
+ ],
+ "voices": {
+  "harmony": "three",
+  "choir": true
+ },
+ "solo": false,
+ "counter": false,
+ "intro": false
 }

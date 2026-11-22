@@ -75,6 +75,21 @@
      "d": 3.8
     }
    ]
+  },
+  {
+   "instrument": "cello",
+   "octave": 3,
+   "volume": 0.4,
+   "pan": -0.25,
+   "enter": 8,
+   "bar": [
+    {
+     "t": 0,
+     "d": 4,
+     "n": "root",
+     "v": 0.45
+    }
+   ]
   }
  ],
  "free": [
@@ -120,5 +135,6 @@
     }
    ]
   }
- ]
+ ],
+ "rich_chords": true
 }

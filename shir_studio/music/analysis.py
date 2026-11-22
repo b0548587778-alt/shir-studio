@@ -102,15 +102,30 @@ def _snap(center, scale):
 def _targets(mc, voiced, notes, scale, strength):
     """תיקון לכל צליל בשלמותו - שומר על הוויברטו והגלישות הטבעיות."""
     corr = np.zeros(len(mc))
+    inside = np.zeros(len(mc), bool)
     for nt in notes:
         a, b = int(round(nt.start / FRAME_SEC)), int(round(nt.end / FRAME_SEC))
         target = _snap(nt.pitch, scale)
         dev = target - nt.pitch
+        inside[a:b] = True                        # גם צליל מדויק (בלי תיקון) הוא 'עוגן' למעברים
         if abs(dev) < 0.08:
             continue
         # צליל שנמצא בדיוק באמצע בין שני צלילים - לא בטוח מה התכוון הזמר, מתקנים פחות
         sure = float(np.clip((0.5 - abs(dev)) / 0.2, 0.3, 1.0))
         corr[a:b] = dev * strength * sure
+    # מעברים טבעיים: בין שני צלילים מחוברים (לגאטו) התיקון עובר בהדרגה מהאחד לשני,
+    # במקום לקפוץ לאפס באמצע הגלישה - כך הגלישה של הזמר נשמרת ונשמעת חלקה
+    idx = np.arange(len(corr))
+    if inside.any():
+        filled = np.interp(idx, idx[inside], corr[inside])
+        runs = np.cumsum(np.diff(np.concatenate([[0], voiced.astype(int)])) == 1)   # מספר רצף קולי
+        gap = voiced & ~inside
+        same = np.zeros(len(corr), bool)
+        for r in np.unique(runs[gap]):
+            sel = runs == r
+            if (sel & inside).any():
+                same |= sel & gap
+        corr = np.where(same, filled, corr)
     corr = np.where(voiced, corr, 0)
     return gaussian_filter1d(corr, 3)            # מעברים רכים (~30ms)
 
@@ -369,7 +384,8 @@ def parse_chord(sym):
         root, rest = (root - 1) % 12, rest[1:]
     minor = rest.startswith("m") and not rest.startswith("maj")
     q = "min" if minor else "maj"
-    return {"degree": sym, "index": -1, "root": root, "quality": q,
+    seventh = 11 if "maj7" in rest else (10 if "7" in rest else None)
+    return {"degree": sym, "index": -1, "root": root, "quality": q, "seventh": seventh,
             "pcs": [(root + d) % 12 for d in theory.QUALITY[q]]}
 
 
