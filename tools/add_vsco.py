@@ -13,6 +13,8 @@ import subprocess
 import sys
 
 import numpy as np
+
+sys.path.insert(0, os.path.dirname(__file__))
 import soundfile as sf
 from scipy.signal import resample_poly
 
@@ -29,6 +31,13 @@ INSTRUMENTS = {
     "brass": ("TromboneSus.sfz", 3.0, 2, 0.02, 0.35),
     "flute": ("FluteSusVib.sfz", 3.5, 1, 0.04, 0.4),
     "acoustic_bass": ("ContrabassPizz.sfz", 2.0, 2, 0.002, 0.25),
+    "harp": ("Harp.sfz", 3.0, 1, 0.002, 1.2),
+    "oboe": ("OboeSusVib.sfz", 3.0, 1, 0.03, 0.35),
+    "bassoon": ("BassoonSus.sfz", 3.0, 1, 0.03, 0.35),
+    "horn": ("FHornSus.sfz", 3.5, 2, 0.04, 0.5),
+    "marimba": ("Marimba.sfz", 2.0, 1, 0.002, 0.6),
+    "glockenspiel": ("Glockenspiel.sfz", 2.5, 1, 0.002, 1.5),
+    "bells": ("TubularBells.sfz", 4.0, 1, 0.002, 2.0),
 }
 NOTE = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 
@@ -130,17 +139,14 @@ def build(repo, name, sfz, max_sec, layers, attack, release, pack):
 
 
 def main(repo):
-    old = np.load(PACK)
-    meta = json.loads(bytes(old["_meta"]).decode())
-    pack = {k: old[k] for k in old.files if k != "_meta"}
+    from pack_io import load_pack, save_pack
+    pack, meta = load_pack()
     for name, (sfz, max_sec, layers, att, rel) in INSTRUMENTS.items():
         meta[name] = build(repo, name, sfz, max_sec, layers, att, rel, pack)
         print(name, len(meta[name]), "regions")
-    used = {r["key"] for k, v in meta.items() if not k.startswith("_") for r in v}
+    used = {r[f] for k, v in meta.items() if not k.startswith("_") for r in v for f in ("key", "right") if r.get(f)}
     pack = {k: v for k, v in pack.items() if k in used}
-    pack["_meta"] = np.frombuffer(json.dumps(meta).encode(), dtype=np.uint8)
-    np.savez_compressed(PACK, **pack)
-    print("saved", os.path.getsize(PACK) // 1024 // 1024, "MB")
+    save_pack(pack, meta)
 
 
 if __name__ == "__main__":

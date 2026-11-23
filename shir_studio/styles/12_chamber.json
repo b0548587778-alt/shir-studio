@@ -1,0 +1,127 @@
+{
+ "name": "קאמרי עדין",
+ "description": "נבל, מיתרים ואבוב - שקט, נקי ומרגש",
+ "order": 12,
+ "reverb": 0.4,
+ "accomp_db": -6,
+ "rich_chords": true,
+ "lead": "oboe",
+ "tracks": [
+  {
+   "instrument": "harp",
+   "octave": 3,
+   "volume": 0.8,
+   "pan": 0.2,
+   "bar": [
+    {
+     "t": 0,
+     "n": "root_low",
+     "v": 0.55,
+     "d": 1.5
+    },
+    {
+     "t": 0.5,
+     "n": "fifth_low",
+     "v": 0.45,
+     "d": 1.2
+    },
+    {
+     "t": 1,
+     "n": "root",
+     "v": 0.5,
+     "d": 1.2
+    },
+    {
+     "t": 1.5,
+     "n": "third",
+     "v": 0.45,
+     "d": 1
+    },
+    {
+     "t": 2,
+     "n": "fifth",
+     "v": 0.5,
+     "d": 1.2
+    },
+    {
+     "t": 2.5,
+     "n": "octave",
+     "v": 0.45,
+     "d": 1
+    },
+    {
+     "t": 3,
+     "n": "third_hi",
+     "v": 0.45,
+     "d": 1
+    },
+    {
+     "t": 3.5,
+     "n": "fifth",
+     "v": 0.4,
+     "d": 0.8
+    }
+   ]
+  },
+  {
+   "instrument": "slow_strings",
+   "octave": 4,
+   "volume": 0.45,
+   "pan": -0.3,
+   "enter": 4,
+   "bar": [
+    {
+     "t": 0,
+     "n": "chord",
+     "v": 0.4,
+     "d": 4
+    }
+   ]
+  },
+  {
+   "instrument": "cello",
+   "octave": 2,
+   "volume": 0.45,
+   "pan": 0.1,
+   "enter": 4,
+   "bar": [
+    {
+     "t": 0,
+     "n": "root",
+     "v": 0.5,
+     "d": 3.8
+    }
+   ]
+  }
+ ],
+ "free": [
+  {
+   "instrument": "harp",
+   "octave": 3,
+   "volume": 0.8,
+   "pan": 0.2,
+   "seg": [
+    {
+     "t": 0,
+     "d": "seg",
+     "n": "chord",
+     "v": 0.5
+    }
+   ]
+  },
+  {
+   "instrument": "slow_strings",
+   "octave": 4,
+   "volume": 0.45,
+   "pan": -0.3,
+   "seg": [
+    {
+     "t": 0,
+     "d": "seg",
+     "n": "chord",
+     "v": 0.4
+    }
+   ]
+  }
+ ]
+}
