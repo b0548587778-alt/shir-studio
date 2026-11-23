@@ -10,7 +10,8 @@ MELODY = [  # (midi, beats)  - ניגון בלה מינור
 ]
 
 
-def sing(bpm=120, detune=0.0, drift=0.0, wobble=0.25, seed=0, repeats=2):
+def sing(bpm=120, detune=0.0, drift=0.0, wobble=0.25, seed=0, repeats=2, vibrato=0.0):
+    """vibrato: עומק ויברטו בחצאי טונים (זמר מקצועי: 0.5-1)."""
     rng = np.random.default_rng(seed)
     beat = 60 / bpm
     seq = MELODY * repeats
@@ -28,7 +29,8 @@ def sing(bpm=120, detune=0.0, drift=0.0, wobble=0.25, seed=0, repeats=2):
         err = rng.uniform(-wobble, wobble)
         tt = np.arange(e - a) / SR
         p = m + detune + err + drift * (t0 / total)
-        f[a:e] = 440 * 2 ** ((p - 69) / 12) * (1 + 0.003 * np.sin(2 * np.pi * 5.5 * tt))
+        vib = vibrato * np.sin(2 * np.pi * 5.5 * tt) * np.minimum(1, tt / 0.3)   # ויברטו שמתחיל אחרי רגע
+        f[a:e] = 440 * 2 ** ((p + vib - 69) / 12) * (1 + 0.003 * np.sin(2 * np.pi * 5.5 * tt))
         env = np.minimum(1, tt / 0.04) * np.minimum(1, (tt[::-1]) / 0.05)
         amp[a:e] = env
         truth.append((t0, m, err))
