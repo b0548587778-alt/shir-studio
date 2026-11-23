@@ -61,7 +61,13 @@ def _tuning_curve(midi, voiced):
 
 def _segment_notes(mc, voiced):
     notes = []
-    sm = median_filter(np.where(voiced, mc, 0), 7)
+    # ממוצע על פני מחזור ויברטו אחד (כ-0.17 שניות): הוויברטו של הזמר 'מתבטל',
+    # ומעבר אמיתי לצליל אחר עדיין בולט. בלי זה, ויברטו רחב נחתך להרבה 'צלילים' מדומים.
+    w = max(3, int(round(0.17 / FRAME_SEC)))
+    v = voiced.astype(float)
+    num = uniform_filter1d(np.where(voiced, mc, 0.0), w)
+    den = uniform_filter1d(v, w)
+    sm = np.where(den > 0.3, num / np.maximum(den, 1e-6), np.where(voiced, mc, 0.0))
     n = len(mc)
     i = 0
     while i < n:
@@ -251,7 +257,12 @@ def analyze(x: np.ndarray, strength: float = 0.8, progress=None):
         from ..audio.fileio import AudioError
         raise AudioError("לא זיהיתי שירה בהקלטה.\nשיר קרוב יותר למיקרופון ונסה שוב.")
     midi = np.where(voiced, hz_to_midi(np.where(voiced, f0, 1)), np.nan)
-    curve, glob = _tuning_curve(np.nan_to_num(midi), voiced)
+    # הערכת הכיוון לפי הגובה הממוצע על פני מחזור ויברטו (ויברטו רחב מבלבל את ההערכה)
+    wv = max(3, int(round(0.17 / FRAME_SEC)))
+    num = uniform_filter1d(np.where(voiced, np.nan_to_num(midi), 0.0), wv)
+    den = uniform_filter1d(voiced.astype(float), wv)
+    midi_s = np.where(voiced & (den > 0.3), num / np.maximum(den, 1e-6), np.nan_to_num(midi))
+    curve, glob = _tuning_curve(midi_s, voiced)
     # מתקנים 'זליגה' רק כשהיא ממשית; אחרת כיוון קבוע (יציב יותר)
     if np.ptp(curve[voiced]) < 0.3:
         curve = np.full(len(curve), glob)

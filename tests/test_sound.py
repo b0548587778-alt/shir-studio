@@ -131,3 +131,15 @@ def test_preview_is_short():
     s = Song(x)
     y = s.preview(load_styles()[0], quiet, seconds=12)
     assert y.ndim == 2 and len(y) < 30 * SR and np.isfinite(y).all()
+
+
+def test_wide_vibrato_is_not_split_into_notes():
+    """זמר עם ויברטו רחב (כמו בחזנות): כל צליל צריך להישאר צליל אחד, והסולם צריך להיות נכון."""
+    import synth_voice
+    x, _ = sing(bpm=90, repeats=1, wobble=0.1, vibrato=0.8)
+    s = Song(x)
+    s.prepare(quiet)
+    a = s.analysis
+    sung = len(synth_voice.MELODY)
+    assert len(a.notes) < 1.5 * sung                          # לפני התיקון: פי כמה
+    assert (a.tonic, a.mode) == (9, "minor")                  # לה מינור
