@@ -36,13 +36,13 @@ def load(path: str) -> np.ndarray:
     return data
 
 
-def save(path: str, data: np.ndarray) -> None:
+def save(path: str, data: np.ndarray, bitrate: int = 256) -> None:
     data = np.clip(np.asarray(data, dtype=np.float32), -1.0, 1.0)
     try:
         if path.lower().endswith(".mp3"):
             import lameenc
             enc = lameenc.Encoder()
-            enc.set_bit_rate(256)
+            enc.set_bit_rate(bitrate)
             enc.set_in_sample_rate(SR)
             ch = 1 if data.ndim == 1 else data.shape[1]
             enc.set_channels(ch)

@@ -98,6 +98,46 @@ def auto_eq(v):
     return v
 
 
+def ride(v, max_db=6.0):
+    """'רוכב עוצמה' (כמו טכנאי באולפן): משווה את עוצמת הקול לאורך השיר -
+    משפט שקט מוגבר, משפט חזק מונמך, בלי לפגוע בדינמיקה בתוך המילים."""
+    env = np.sqrt(uniform_filter1d(v ** 2, int(0.4 * SR)) + 1e-12)
+    active = env > np.percentile(env, 95) * 10 ** (-30 / 20)     # עד 30dB מתחת לחלק החזק = עדיין שירה
+    if not active.any():
+        return v
+    target = np.median(env[active])
+    g_db = np.clip(20 * np.log10(target / env), -max_db, max_db)
+    g_db = np.where(active, g_db, 0.0)
+    g_db = uniform_filter1d(uniform_filter1d(g_db, int(0.3 * SR)), int(0.3 * SR))
+    return v * 10 ** (g_db / 20)
+
+
+def echo_throws(v, beat=0.5, amount=0.32):
+    """הד בסוף משפטים: כשהזמר מסיים משפט, הצליל האחרון 'חוזר' פעמיים בקצב השיר - טריק של אולפנים."""
+    env = np.sqrt(uniform_filter1d(v ** 2, int(0.05 * SR)) + 1e-12)
+    loud = env > np.percentile(env, 70) * 0.3
+    # סוף משפט = מעבר משירה לשקט שנמשך לפחות חצי שנייה
+    quiet_ahead = uniform_filter1d((~loud).astype(float), int(0.5 * SR), origin=-(int(0.5 * SR) // 2))
+    ends = np.where(loud[:-1] & ~loud[1:] & (quiet_ahead[:-1] > 0.95))[0]
+    send = np.zeros_like(v)
+    L = int(0.35 * SR)
+    for e in ends:
+        s = max(0, e - L)
+        send[s:e] += v[s:e] * np.linspace(0, 1, e - s)
+    send = sosfilt(butter(2, [400, 5000], btype="band", fs=SR, output="sos"), send)   # הד 'רדיו' שלא מסתיר
+    d = int(beat * SR)
+    out = np.zeros_like(v)
+    for k, g in ((1, 1.0), (2, 0.5)):
+        if k * d < len(v):
+            out[k * d:] += send[: len(v) - k * d] * g
+    return out * amount
+
+
+def saturate(st, drive=1.15):
+    """חום של 'סרט הקלטה': עיוות עדין מאוד שמוסיף עושר ומלכד את הערבוב."""
+    return np.tanh(st * drive) / np.tanh(drive)
+
+
 def process_voice(v):
     v = sosfiltfilt(butter(2, 90, btype="high", fs=SR, output="sos"), v)
     v = _peaking(v, 250, -2.0, 1.0)      # פחות 'בוץ'
@@ -105,6 +145,7 @@ def process_voice(v):
     v = auto_eq(v)
     v = deess(v)
     v = gate(v)
+    v = ride(v)
     peak_ref = np.percentile(np.abs(v), 99.5) + 1e-9
     v = v / peak_ref * 0.5
     thr = 20 * np.log10(rms(v[np.abs(v) > 0.02]) if np.any(np.abs(v) > 0.02) else 0.1)
@@ -196,12 +237,22 @@ def mix(voice, tracks, lead, style, accomp_db=0.0, voice_db=0.0, reverb=1.0, ste
 
     acc = np.zeros((n, 2))
     for spec, buf, *_ in tracks:
+        gl, gr = pan_gains(spec.get("pan", 0))
+        inst = spec.get("instrument")
+        if buf.ndim == 2:
+            # כלי שהוקלט בסטריאו (פסנתר): שומרים על הרוחב האמיתי, המיקום קובע את האיזון
+            b2 = np.zeros((n, 2))
+            b2[:min(n, len(buf))] = buf[:n]
+            m = b2.mean(axis=1)
+            r = rms(m[np.abs(m) > 1e-4]) if np.any(np.abs(m) > 1e-4) else 1.0
+            b2 *= spec.get("volume", 0.7) / r
+            acc[:, 0] += b2[:, 0] * gl * 1.414
+            acc[:, 1] += b2[:, 1] * gr * 1.414
+            continue
         b = np.zeros(n)
         b[:min(n, len(buf))] = buf[:n]
         r = rms(b[np.abs(b) > 1e-4]) if np.any(np.abs(b) > 1e-4) else 1.0
         b = b / r * spec.get("volume", 0.7)
-        gl, gr = pan_gains(spec.get("pan", 0))
-        inst = spec.get("instrument")
         if inst in WIDE:
             # רוחב סטריאו: השהיה קטנה ושונה בכל צד (כמו שני מיקרופונים) - הכלי נשמע 'רחב'
             dl, dr = widen(b)
@@ -236,6 +287,12 @@ def mix(voice, tracks, lead, style, accomp_db=0.0, voice_db=0.0, reverb=1.0, ste
         vst[:, 1] += hb * gr * 0.9
     if choir:
         vst += choir_copies(vst)
+    period = 60.0 / style.get("_tempo", 100.0)
+    ech = echo_throws(vbuf, beat=period)
+    gl, gr = pan_gains(-0.4)
+    vst[:, 0] += ech * gl
+    gl, gr = pan_gains(0.4)
+    vst[:, 1] += np.concatenate([np.zeros(int(0.012 * SR)), ech[:-int(0.012 * SR)]]) * gr
     vst = add_reverb(vst, rv * 0.7, 1.6)
     acc = add_reverb(acc, rv, 2.0)
     out = vst + acc
@@ -246,6 +303,8 @@ def mix(voice, tracks, lead, style, accomp_db=0.0, voice_db=0.0, reverb=1.0, ste
     # עוצמה כוללת סבירה והגבלה
     pre = rms(out)
     out = master(out)
+    pk = np.percentile(np.abs(out), 99.9) + 1e-9
+    out = saturate(out / pk * 0.8) * pk / 0.8
     g = rms(out) / max(pre, 1e-9)
     out = limiter(out)
     fade = int(0.3 * SR)

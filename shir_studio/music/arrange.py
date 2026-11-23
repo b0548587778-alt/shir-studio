@@ -184,9 +184,14 @@ class _Track:
         if i < 0:
             x = x[-i:]
             i = 0
+        if x.ndim == 2 and self.buf.ndim == 1:          # הגיע צליל סטריאו - הערוץ עובר לסטריאו
+            self.buf = np.stack([self.buf, self.buf], axis=1)
         e = min(len(self.buf), i + len(x))
         if e > i:
-            self.buf[i:e] += x[:e - i]
+            if self.buf.ndim == 2 and x.ndim == 1:
+                self.buf[i:e] += x[:e - i, None]
+            else:
+                self.buf[i:e] += x[:e - i]
 
 
 class Timeline:
@@ -262,6 +267,33 @@ def render(a, style, progress=None, rng_seed=7):
         outro_bars = int(np.ceil((last_voice - solo_from) / bar_sec + 0.25))
         n = int((total + outro_bars * bar_sec) * SR)
     end_voice = last_voice + outro_bars * bar_sec
+    if a.steady:
+        # רשת הפעמות חייבת להמשיך עד אחרי הסולו ואקורד הסיום
+        need = end_voice + 4 * bar_sec
+        extra = []
+        t = tl.beats[-1]
+        while t < need:
+            t += tl.period
+            extra.append(t)
+        if extra:
+            tl.beats = np.concatenate([tl.beats, extra])
+        n = max(n, int((tl.lead + need + 2 * bar_sec) * SR))
+    warp = lambda t: t                               # שינוי זמן בסיום (האטה)
+    if a.steady and style.get("ritardando", True):
+        # האטה בסיום (ריטרדנדו): שתי התיבות האחרונות לפני אקורד הסיום מואטות בהדרגה, כמו בהופעה חיה
+        old = tl.beats.copy()
+        rel = old - (end_voice + 0.3 - 2 * bar_sec)
+        k0 = int(np.searchsorted(rel, 0))
+        if 0 < k0 < len(old) - 1:
+            gaps = np.diff(old)
+            K = 2 * meter
+            for j in range(k0, len(gaps)):
+                x = min(1.0, (j - k0 + 1) / K)
+                gaps[j] *= 1 + 0.45 * x * x
+            new = np.concatenate([[old[0]], old[0] + np.cumsum(gaps)])
+            tl.beats = new
+            n = int((total + outro_bars * bar_sec + 3 * bar_sec) * SR)
+            warp = lambda t, o=old + tl.lead, w=new + tl.lead: float(np.interp(t, o, w)) if t > o[k0] else t
 
     sing0 = (tl.beat_time(tl.bar0 + IB * tl.meter) - tl.lead) if a.steady else 0.0
     intro_off = INTRO_MEL * bar_sec               # במבוא - האקורדים של תחילת השיר
@@ -298,14 +330,19 @@ def render(a, style, progress=None, rng_seed=7):
                 if t_bar > end_voice + 0.3:
                     # תיבת סיום: אקורד טוניקה ארוך
                     t = tl.beat_time(pos0)
-                    dur = tl.period * meter
+                    dur = (tl.beat_time(pos0 + 1) - tl.beat_time(pos0)) * meter * 1.4   # אקורד ארוך
                     if inst == "drums":
-                        for dn, dv in (("crash", 0.8), ("kick", 1.0)):
+                        for dn, dv in (("crash", 0.85), ("kick", 1.0)):
                             out.add(synth.render_drum(dn, dv), t, (dn, 0.3, dv))
                     else:
-                        ev = tr["bar"][0]
-                        for m in _note_for(ev["n"], tonic_chord, oct_):
-                            play(out, inst, m, dur, 0.6, t)
+                        # אקורד סיום מלא: הצליל של הכלי + האקורד כולו + שורש נמוך
+                        fin = enrich(tonic_chord, a.mode, rich)
+                        fin = dict(fin, seventh=None) if not rich else fin
+                        ns = set(_note_for(tr["bar"][0]["n"], fin, oct_))
+                        if inst not in BASS:
+                            ns |= set(_note_for("chord", fin, oct_))
+                        for m in sorted(ns):
+                            play(out, inst, m, dur, 0.62, t)
                     break
                 # מבנה: מבוא (2 תיבות), כלים שנכנסים בהדרגה, מילוי תופים בסוף כל משפט
                 phrase_bar = bar - IB
@@ -330,6 +367,16 @@ def render(a, style, progress=None, rng_seed=7):
                                 {"t": meter - 0.5, "n": "tom_hi", "v": 0.7},
                                 {"t": meter - 0.25, "n": "tom_low", "v": 0.85}]
                         f0 = meter - 1
+                    elif synth.has_drum("tom_hi") and phrase_bar >= 0:
+                        # מילויים מתחלפים - כל משפט נגמר קצת אחרת
+                        k = (phrase_bar // PHRASE) % 3
+                        if k == 1:
+                            fill = [{"t": meter - 1 + j / 4, "n": "snare", "v": 0.45 + 0.12 * j} for j in range(4)]
+                            f0 = meter - 1
+                        elif k == 2:
+                            fill = [{"t": meter - 1, "n": "snare", "v": 0.7}, {"t": meter - 0.5, "n": "tom_hi", "v": 0.7},
+                                    {"t": meter - 0.25, "n": "tom_low", "v": 0.8}]
+                            f0 = meter - 1
                     evs = [e for e in bar_events if e["t"] < f0] + [e for e in fill if e["t"] < meter]
                 new_phrase = bar >= IB and phrase_bar % PHRASE == 0
                 if inst == "drums" and new_phrase and (tr.get("crash_on_phrase") or lvl > level_at(phrase_bar - 1)):
@@ -367,6 +414,8 @@ def render(a, style, progress=None, rng_seed=7):
                         if ev["n"] == "chord":
                             notes = voice_lead(notes, prev_voicing)
                             prev_voicing = notes
+                            if lvl == 1 and (phrase_bar // PHRASE) % 2 == 1 and inst not in BASS:
+                                notes = notes + [notes[0] + 12]          # פזמון חוזר: אקורד פתוח ומלא יותר
                         elif inst in BASS and ev is bar_events[-1] and ev["t"] >= meter - 1 and len(notes) == 1:
                             # 'הליכה' של הבס: צליל מעבר אל השורש של האקורד הבא
                             nxt = chord_at(tv + tl.period * (meter - ev["t"]) + 0.05)
@@ -398,8 +447,9 @@ def render(a, style, progress=None, rng_seed=7):
         out = _Track(n)
         off = (outro_bars * bar_sec)
         for s0, e0, m in solo:
-            t = s0 + off + tl.lead + rng.normal(0, 0.008)
-            play(out, lead, m, max(0.1, (e0 - s0) * 0.95), 0.72, t)
+            t = warp(s0 + off + tl.lead) + rng.normal(0, 0.008)
+            d = warp(e0 + off + tl.lead) - warp(s0 + off + tl.lead)
+            play(out, lead, m, max(0.1, d * 0.95), 0.72, t)
         if INTRO_MEL:
             for s0, e0, m in intro_melody(a, tl, INTRO_MEL):
                 play(out, lead, m, max(0.1, (e0 - s0) * 0.95), 0.66, s0 + tl.lead + rng.normal(0, 0.008))

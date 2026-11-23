@@ -91,3 +91,42 @@ def test_new_orchestral_instruments_in_tune():
         x = sampler.note(inst, m, 1.2, 0.8)
         f, _ = yin(x[11025:44100])
         assert abs(np.median(hz_to_midi(f[f > 0])) - m) < 0.3, inst
+
+
+def test_stereo_piano_and_new_instruments():
+    x = sampler.note("piano", 60, 1.0, 0.8)
+    assert x.ndim == 2 and x.shape[1] == 2 and not np.allclose(x[:, 0], x[:, 1])
+    for inst in ("harp", "oboe", "bassoon", "horn", "marimba", "glockenspiel", "bells"):
+        assert sampler.has(inst), inst
+
+
+def test_new_styles_render_with_ritardando_ending():
+    from shir_studio.music.arrange import render
+    x, _ = sing(bpm=112, repeats=2)
+    s = Song(x)
+    for sid in ("11_orchestral", "12_chamber", "13_wedding"):
+        st = [t for t in load_styles() if t["id"] == sid][0]
+        y = s.make(st, quiet)
+        assert np.isfinite(y).all() and np.abs(y).max() <= 0.9
+    a = s.analysis
+    with_rit, _ = render(a, st)
+    no_rit, _ = render(a, dict(st, ritardando=False))
+    assert len(with_rit[0][1]) > len(no_rit[0][1])          # הסיום מואט - השיר ארוך קצת יותר
+
+
+def test_vocal_rider_evens_loudness():
+    from shir_studio.audio.mix import ride
+    from shir_studio.audio.fileio import SR
+    t = np.arange(4 * SR) / SR
+    v = np.sin(2 * np.pi * 220 * t) * np.where(t < 2, 0.05, 0.4)     # משפט שקט ואז חזק
+    o = ride(v)
+    r = lambda z: np.sqrt(np.mean(z ** 2))
+    assert r(o[SR // 2:3 * SR // 2]) / r(o[5 * SR // 2:7 * SR // 2]) > 2 * r(v[SR // 2:3 * SR // 2]) / r(v[5 * SR // 2:7 * SR // 2])
+
+
+def test_preview_is_short():
+    from shir_studio.audio.fileio import SR
+    x, _ = sing(bpm=112, repeats=3)
+    s = Song(x)
+    y = s.preview(load_styles()[0], quiet, seconds=12)
+    assert y.ndim == 2 and len(y) < 30 * SR and np.isfinite(y).all()

@@ -113,12 +113,41 @@ class Song:
         style = apply_swaps(style, st.swaps)
         tracks, lead = render(self.analysis, style, progress=lambda p: progress(55 + p * 0.3, None))
         progress(88, "מערבב את הקול והליווי...")
+        style = dict(style, _tempo=float(self.analysis.tempo) if self.analysis.steady else 90.0)
         out, stems = mix(self.tuned, tracks, lead, style, accomp_db=st.accomp_db,
                          voice_db=st.voice_db, reverb=st.reverb / 100, stems=True,
                          harmony=self.harmony, choir=st.choir)
         self.last_tracks, self.last_lead, self.last_stems = tracks, lead, stems
         progress(100, None)
         return out
+
+    def preview(self, style, progress, settings=None, seconds=25.0):
+        """האזנה מהירה: רק ההתחלה של השיר (בערך 25 שניות) - כדי לבחור סגנון בלי לחכות לשיר כולו."""
+        import copy
+        st = settings or Settings()
+        if self.analysis is None or self._prep != st.prep_key():
+            self.prepare(progress, st)
+        apply_settings(self.analysis, st)
+        self.analysis.sections_override = st.sections
+        self._retune(st)
+        a = copy.copy(self.analysis)
+        cut = min(a.duration, seconds)
+        a.notes = [nt for nt in a.notes if nt.start < cut]
+        if not a.notes:
+            a.notes = list(self.analysis.notes[:4])
+        a.chords = [c for c in a.chords if c[0] < cut + 4]
+        a.duration = cut
+        progress(60, "מכין האזנה מהירה...")
+        from .music.styles import apply_swaps
+        style = apply_swaps(style, st.swaps)
+        style = dict(style, solo=False, ritardando=False)
+        tracks, lead = render(a, style)
+        style["_tempo"] = float(a.tempo) if a.steady else 90.0
+        voice = self.tuned[: int((cut + 0.5) * 44100)]
+        out = mix(voice, tracks, lead, style, accomp_db=st.accomp_db, voice_db=st.voice_db,
+                  reverb=st.reverb / 100)
+        progress(100, None)
+        return out[: int((lead + cut + 2.5) * 44100)]
 
     def pitch_curves(self, settings=None):
         """לגרף: זמן, גובה הצליל לפני התיקון ואחריו (בחצאי טונים), והצלילים הנקיים שזוהו."""

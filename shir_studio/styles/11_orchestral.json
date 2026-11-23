@@ -1,0 +1,199 @@
+{
+ "name": "תזמורתי מלא",
+ "description": "מיתרים, צ'לו, קרן יער, נבל ותופני - כמו בסרט",
+ "order": 11,
+ "reverb": 0.45,
+ "accomp_db": -4,
+ "rich_chords": true,
+ "lead": "flute",
+ "tracks": [
+  {
+   "instrument": "strings",
+   "octave": 4,
+   "volume": 0.8,
+   "pan": -0.25,
+   "bar": [
+    {
+     "t": 0,
+     "n": "chord",
+     "v": 0.55,
+     "d": 4
+    }
+   ]
+  },
+  {
+   "instrument": "cello",
+   "octave": 2,
+   "volume": 0.7,
+   "pan": 0.3,
+   "bar": [
+    {
+     "t": 0,
+     "n": "root",
+     "v": 0.6,
+     "d": 2
+    },
+    {
+     "t": 2,
+     "n": "fifth_low",
+     "v": 0.55,
+     "d": 2
+    }
+   ]
+  },
+  {
+   "instrument": "harp",
+   "octave": 3,
+   "volume": 0.45,
+   "pan": 0.35,
+   "enter": 2,
+   "bar": [
+    {
+     "t": 0,
+     "n": "root_low",
+     "v": 0.55,
+     "d": 1.5
+    },
+    {
+     "t": 0.5,
+     "n": "fifth_low",
+     "v": 0.45,
+     "d": 1.2
+    },
+    {
+     "t": 1,
+     "n": "root",
+     "v": 0.5,
+     "d": 1.2
+    },
+    {
+     "t": 1.5,
+     "n": "third",
+     "v": 0.45,
+     "d": 1
+    },
+    {
+     "t": 2,
+     "n": "fifth",
+     "v": 0.5,
+     "d": 1.2
+    },
+    {
+     "t": 2.5,
+     "n": "octave",
+     "v": 0.45,
+     "d": 1
+    },
+    {
+     "t": 3,
+     "n": "third_hi",
+     "v": 0.45,
+     "d": 1
+    },
+    {
+     "t": 3.5,
+     "n": "fifth",
+     "v": 0.4,
+     "d": 0.8
+    }
+   ]
+  },
+  {
+   "instrument": "horn",
+   "octave": 3,
+   "volume": 0.45,
+   "pan": -0.1,
+   "enter": 8,
+   "bar": [
+    {
+     "t": 0,
+     "n": "third",
+     "v": 0.5,
+     "d": 3.8
+    }
+   ]
+  },
+  {
+   "instrument": "timpani",
+   "octave": 2,
+   "volume": 0.4,
+   "pan": 0,
+   "enter": 8,
+   "bar": [
+    {
+     "t": 0,
+     "n": "root",
+     "v": 0.7,
+     "d": 0.8
+    }
+   ]
+  },
+  {
+   "instrument": "drums",
+   "volume": 0.3,
+   "enter": 8,
+   "crash_on_phrase": true,
+   "bar": [
+    {
+     "t": 0,
+     "n": "kick",
+     "v": 0.6
+    },
+    {
+     "t": 2,
+     "n": "kick",
+     "v": 0.5
+    },
+    {
+     "t": 2,
+     "n": "snare",
+     "v": 0.35
+    }
+   ]
+  }
+ ],
+ "free": [
+  {
+   "instrument": "strings",
+   "octave": 4,
+   "volume": 0.8,
+   "pan": -0.25,
+   "seg": [
+    {
+     "t": 0,
+     "d": "seg",
+     "n": "chord",
+     "v": 0.5
+    }
+   ]
+  },
+  {
+   "instrument": "cello",
+   "octave": 2,
+   "volume": 0.6,
+   "pan": 0.3,
+   "seg": [
+    {
+     "t": 0,
+     "d": "seg",
+     "n": "root",
+     "v": 0.55
+    }
+   ]
+  },
+  {
+   "instrument": "harp",
+   "octave": 3,
+   "volume": 0.5,
+   "pan": 0.35,
+   "seg": [
+    {
+     "t": 0.05,
+     "d": "seg",
+     "n": "chord",
+     "v": 0.5
+    }
+   ]
+  }
+ ]
+}

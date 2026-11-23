@@ -17,13 +17,26 @@ def _path():
     return os.path.join(os.path.dirname(os.path.dirname(__file__)), "samples", "pack.npz")
 
 
+class _Packs:
+    """כמה קבצי npz (pack.npz, pack2.npz...) שמתנהגים כמו קובץ אחד."""
+
+    def __init__(self, paths):
+        self._files = [np.load(p) for p in paths]
+        self._where = {k: f for f in self._files for k in f.files}
+
+    def __getitem__(self, k):
+        return self._where[k][k]
+
+
 def available():
     global _pack, _meta
     if _pack is None:
         p = _path()
         if not os.path.exists(p):
             return False
-        _pack = np.load(p)
+        import glob
+        parts = [p] + sorted(q for q in glob.glob(os.path.join(os.path.dirname(p), "pack*.npz")) if q != p)
+        _pack = _Packs(parts)
         _meta = json.loads(bytes(_pack["_meta"]).decode())
     return True
 
@@ -34,6 +47,7 @@ def has(instrument):
 
 def _region(instrument, midi, vel=0.8):
     """בוחר דגימה לפי הצליל ולפי עוצמת הנגינה (בכלים שיש להם כמה שכבות עוצמה)."""
+    available()
     regs = _meta[instrument]
     v = int(np.clip(vel, 0, 1) * 127)
     match = [r for r in regs if r["lo"] <= midi <= r["hi"]]
@@ -44,8 +58,8 @@ def _region(instrument, midi, vel=0.8):
     return (layered or match)[0]
 
 
-def _play(r, ratio, n):
-    data = _pack[r["key"]].astype(np.float32) / 32768.0
+def _play(r, ratio, n, key=None):
+    data = _pack[key or r["key"]].astype(np.float32) / 32768.0
     pos = np.arange(n) * ratio
     if r["loop"]:
         ls, le = r["loop"]
@@ -68,6 +82,8 @@ def note(instrument, midi, dur, vel, tuning=0.0, release_cap=1.2):
     rel = float(np.clip(r["release"], 0.06, release_cap))
     n = int((dur + rel) * SR)
     x = _play(r, ratio, n)
+    if r.get("right"):                                    # דגימת סטריאו אמיתית
+        x = np.stack([x, _play(r, ratio, n, r["right"])], axis=1)
     t = np.arange(n) / SR
     att = max(r["attack"], 0.002)
     dec = max(r["decay"], 0.01)
@@ -77,7 +93,8 @@ def note(instrument, midi, dur, vel, tuning=0.0, release_cap=1.2):
     env = 10 ** ((db + rel_db - r["att_db"]) / 20) * np.minimum(1.0, t / att)
     # בכלי עם שכבות עוצמה, הדגימה עצמה כבר רכה/חזקה - מקטינים את השינוי בעוצמה
     gain = (0.25 + 0.75 * vel) ** (0.7 if "vlo" in r else 1.3)
-    return (x * env * gain).astype(np.float32)
+    g = env * gain
+    return (x * (g[:, None] if x.ndim == 2 else g)).astype(np.float32)
 
 
 KIT = {"kick", "snare", "hat", "open_hat", "ride", "crash", "tom_hi", "tom_low"}

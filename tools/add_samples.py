@@ -23,9 +23,9 @@ PACK = os.path.join(os.path.dirname(os.path.dirname(__file__)), "shir_studio", "
 
 # שם בתוכנה: (תבנית שם קובץ, מקסימום שניות לדגימה)
 MELODIC = {
-    "piano": ("UprightPianoKW*.sf2", 4.0),
-    "guitar": ("SpanishClassicalGuitar*.sf2", 3.0),
-    "clarinet": ("Clarinet-*.sf2", 4.0),
+    "piano": ("UprightPianoKW*.sf2", 4.0, True),
+    "guitar": ("SpanishClassicalGuitar*.sf2", 3.0, False),
+    "clarinet": ("Clarinet-*.sf2", 4.0, False),
 }
 # תופים: שם -> מקש בערכה של Muldjord (לפי שמות הדגימות בקובץ)
 KIT_KEYS = {"kick": 48, "snare": 50, "hat": 52, "open_hat": 53, "ride": 54, "crash": 58,
@@ -59,7 +59,7 @@ def _zones(sf):
     return out
 
 
-def _read(sf, g, max_sec):
+def _read(sf, g, max_sec, stereo=False):
     """מחזיר את הדגימה (מונו: ממוצע של ימין ושמאל בזוג סטריאו) ופרטי הלולאה."""
     smpl, shdr = sf[0], sf[7]
     s = shdr[g[53]]
@@ -70,11 +70,18 @@ def _read(sf, g, max_sec):
     loop = (g.get(54, 0) & 1) == 1 and 0 < ls < le
     n = min(end - start, max(le, 1)) if loop else min(end - start, int(max_sec * s[5]))
     data = smpl[start:start + n].astype(np.float32)
+    right = None
     if s[9] in (2, 4) and s[8] < len(shdr):       # זוג סטריאו - מוסיפים את הערוץ השני
         o = shdr[s[8]]
         other = smpl[o[1] + (start - s[1]):][:n].astype(np.float32)
         if len(other) == n:
-            data = 0.5 * (data + other)
+            if stereo:                            # שומרים את שני הערוצים (צליל רחב ואמיתי)
+                right = np.clip(other, -32768, 32767).astype(np.int16)
+                if s[9] == 2:                     # הדגימה הזו היא הימנית - מחליפים
+                    data, other = other, data
+                    right = np.clip(other, -32768, 32767).astype(np.int16)
+            else:
+                data = 0.5 * (data + other)
     data = np.clip(data, -32768, 32767).astype(np.int16)
     root = g.get(58, s[6])
     if root > 127:
@@ -85,15 +92,20 @@ def _read(sf, g, max_sec):
     info = {"root": int(root), "tune": s16(g.get(51, 0)) * 100 + s16(g.get(52, 0)) + s[7], "sr": s[5],
             "loop": [int(ls), int(le)] if loop else None, "att_db": s16(g.get(48, 0)) / 10 * 0.4,
             "attack": tc(34), "decay": tc(36), "sustain_db": -g.get(37, 0) / 10, "release": tc(38)}
+    if stereo:
+        return data, info, s[9], right
     return data, info, s[9]
 
 
-def melodic(path, name, max_sec, pack):
+def melodic(path, name, max_sec, pack, stereo=False):
     sf = parse(path)
     regions, seen = [], set()
     for g, lo, hi in _zones(sf):
         vlo, vhi = rng(g, 44)
-        data, info, typ = _read(sf, g, max_sec)
+        if stereo:
+            data, info, typ, right = _read(sf, g, max_sec, stereo=True)
+        else:
+            (data, info, typ), right = _read(sf, g, max_sec), None
         if typ == 2:                                  # ערוץ ימני - כבר נכלל בממוצע של השמאלי
             continue
         if (lo, hi, vlo, vhi) in seen:
@@ -101,7 +113,11 @@ def melodic(path, name, max_sec, pack):
         seen.add((lo, hi, vlo, vhi))
         key = f"{name}_{lo}_{vlo}"
         pack[key] = data
-        regions.append(dict(info, key=key, lo=lo, hi=hi, vlo=vlo, vhi=vhi))
+        reg = dict(info, key=key, lo=lo, hi=hi, vlo=vlo, vhi=vhi)
+        if right is not None:
+            pack[key + "_R"] = right
+            reg["right"] = key + "_R"
+        regions.append(reg)
     return regions
 
 
@@ -131,22 +147,19 @@ def kit(path, pack):
 
 
 def main(folder):
-    old = np.load(PACK)
-    meta = json.loads(bytes(old["_meta"]).decode())
-    pack = {k: old[k] for k in old.files if k != "_meta"}
-    for name, (pat, max_sec) in MELODIC.items():
+    from pack_io import load_pack, save_pack
+    pack, meta = load_pack()
+    for name, (pat, max_sec, stereo) in MELODIC.items():
         path = glob.glob(os.path.join(folder, "**", pat), recursive=True)[0]
-        meta[name] = melodic(path, name, max_sec, pack)
+        meta[name] = melodic(path, name, max_sec, pack, stereo)
         print(name, len(meta[name]), "regions")
     path = glob.glob(os.path.join(folder, "**", "MuldjordKit*.sf2"), recursive=True)[0]
     meta["kit"] = kit(path, pack)
     print("kit", len(meta["kit"]), "regions")
     # מוחקים דגימות ישנות שאף כלי כבר לא משתמש בהן
-    used = {r["key"] for k, v in meta.items() if not k.startswith("_") for r in v}
+    used = {r[f] for k, v in meta.items() if not k.startswith("_") for r in v for f in ("key", "right") if r.get(f)}
     pack = {k: v for k, v in pack.items() if k in used}
-    pack["_meta"] = np.frombuffer(json.dumps(meta).encode(), dtype=np.uint8)
-    np.savez_compressed(PACK, **pack)
-    print("saved", PACK, os.path.getsize(PACK) // 1024 // 1024, "MB")
+    save_pack(pack, meta)
 
 
 if __name__ == "__main__":

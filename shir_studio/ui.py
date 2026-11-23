@@ -8,7 +8,7 @@ from PySide6.QtCore import Qt, QThread, Signal, QTimer, QStandardPaths
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QStackedWidget, QProgressBar, QFileDialog, QMessageBox, QGridLayout, QButtonGroup, QSlider,
-    QCheckBox, QSpinBox,
+    QCheckBox, QSpinBox, QScrollArea, QSizePolicy,
 )
 
 from . import APP_NAME
@@ -200,22 +200,39 @@ class MainWindow(QMainWindow):
             b.setObjectName("style")
             b.setCheckable(True)
             b.setCursor(Qt.PointingHandCursor)
-            b.setStyleSheet("QPushButton#style { font-size: 20px; }")
+            b.setStyleSheet("QPushButton#style { font-size: 17px; min-height: 58px; }")
             self.style_group.addButton(b, i)
+            b.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)   # לא רחב מהמסך
             grid.addWidget(b, i // 2, i % 2)
             if i == 0:
                 b.setChecked(True)
-        grid.setColumnStretch(0, 1)
-        grid.setColumnStretch(1, 1)
-        v.addLayout(grid)
-        self.harm_btn = QPushButton("🎶  הוסף קול שני (הרמוניה) - כמו מקהלה")
+        for c in range(2):
+            grid.setColumnStretch(c, 1)
+        # הרשימה בתוך אזור גלילה - שגם במסך קטן של מחשב נייד הכול ייכנס
+        box = QWidget()
+        box.setLayout(grid)
+        grid.setContentsMargins(18, 4, 4, 4)            # מקום לפס הגלילה
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setWidget(box)
+        v.addWidget(scroll, 1)
+        self.harm_btn = QPushButton("🎶  הוסף קול שני (מקהלה)")
         self.harm_btn.setObjectName("harm")
         self.harm_btn.setCheckable(True)
         self.harm_btn.setCursor(Qt.PointingHandCursor)
         self.harm_btn.toggled.connect(lambda on: setattr(self.settings, "harmony",
                                                          ("auto" if on else "off")))
-        v.addWidget(self.harm_btn)
-        v.addStretch()
+        self.prev_btn = QPushButton("🎧  האזנה מהירה (25 שניות)")
+        self.prev_btn.setObjectName("harm")
+        self.prev_btn.setCursor(Qt.PointingHandCursor)
+        self.prev_btn.clicked.connect(self.preview_style)
+        hb = QHBoxLayout()
+        for b in (self.harm_btn, self.prev_btn):
+            b.setStyleSheet("font-size: 18px; min-height: 44px; padding: 6px;")
+            hb.addWidget(b)
+        v.addLayout(hb)
         h = QHBoxLayout()
         go = big_button("✨  הכן את השיר", "green")
         go.setMinimumHeight(100)
@@ -281,7 +298,9 @@ class MainWindow(QMainWindow):
         b_graph.clicked.connect(self.show_pitch)
         b_proj = big_button("📁  שמור פרויקט", "light")
         b_proj.clicked.connect(self.save_project)
-        for b in (self.b_undo, self.b_redo, b_graph, b_proj):
+        b_share = big_button("📤  קובץ לשליחה", "light")
+        b_share.clicked.connect(self.share_file)
+        for b in (self.b_undo, self.b_redo, b_graph, b_proj, b_share):
             b.setStyleSheet("font-size:20px; min-height:48px; padding:8px;")
             h4.addWidget(b)
         v.addWidget(b_res); v.addLayout(pr); v.addLayout(h2); v.addLayout(h3); v.addLayout(h4)
@@ -468,6 +487,53 @@ class MainWindow(QMainWindow):
         self.worker.finished_ok.connect(lambda r: self._processed(r, st))
         self.worker.failed.connect(lambda m: (self.error(m), self.go_home()))
         self.worker.start()
+
+    def preview_style(self):
+        if not self.song:
+            return
+        st = self.styles[max(0, self.style_group.checkedId())]
+        self.player.stop()
+        self.prev_btn.setEnabled(False)
+        self.prev_btn.setText("⏳  מכין האזנה מהירה...")
+        song, settings = self.song, self.settings
+        self.prev_worker = Worker(lambda p: song.preview(st, p, settings))
+
+        def done(res):
+            self.prev_btn.setEnabled(True)
+            self.prev_btn.setText("🎧  האזנה מהירה (25 שניות)")
+            self._play(res)
+
+        def fail(m):
+            self.prev_btn.setEnabled(True)
+            self.prev_btn.setText("🎧  האזנה מהירה (25 שניות)")
+            self.error(m)
+        self.prev_worker.finished_ok.connect(done)
+        self.prev_worker.failed.connect(fail)
+        self.prev_worker.start()
+
+    def share_file(self):
+        """קובץ קטן לשליחה בוואטסאפ או במייל (MP3 128, בערך 1MB לדקה)."""
+        if self.result is None:
+            return
+        d = os.path.join(QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation),
+                         "שיר סטודיו", "לשליחה")
+        try:
+            os.makedirs(d, exist_ok=True)
+            path = os.path.join(d, time.strftime("השיר שלי %Y-%m-%d %H-%M.mp3"))
+            save(path, self.result, bitrate=128)
+        except Exception:
+            log_error(traceback.format_exc())
+            self.error("לא הצלחתי ליצור את הקובץ לשליחה.")
+            return
+        mb = os.path.getsize(path) / 1024 / 1024
+        try:
+            import subprocess
+            if os.name == "nt":
+                subprocess.Popen(["explorer", "/select,", path])      # פותח את התיקייה עם הקובץ מסומן
+        except Exception:
+            pass
+        self._info("קובץ לשליחה", f"נוצר קובץ קטן ({mb:.1f}MB) שמתאים לוואטסאפ ולמייל:\n\n{path}\n\n"
+                   "בוואטסאפ: לחצו על 📎 ← מסמך, ובחרו את הקובץ.")
 
     def _state(self):
         return {"settings": settings_to_dict(self.settings), "style": max(0, self.style_group.checkedId()),

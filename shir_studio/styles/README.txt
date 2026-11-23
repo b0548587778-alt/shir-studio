@@ -11,3 +11,4 @@ v = עוצמה (0 עד 1). "free" = מה מנגנים כשהשיר מושר בק
 "intro": false = בלי מבוא מנגינה, "counter": false = בלי מנגינות נגד בין המשפטים,
 "rich_chords": true = אקורדים עשירים (ספטאקורדים), "voices": {"harmony": "three", "choir": true} = מקהלה מהקול של הזמר.
 כלי נוסף: cello. באקורדים שכותבים ידנית אפשר גם E7, Am7, Fmaj7.
+כלים חדשים: harp, oboe, bassoon, horn, marimba, glockenspiel, bells. "ritardando": false = בלי האטה בסיום.
