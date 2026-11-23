@@ -223,6 +223,90 @@ def _tempo_beats(env):
     return tempo, beats, clarity
 
 
+def note_onsets(x, notes):
+    """הרגע שבו כל צליל באמת נשמע (לפי עוצמת הקול), בדיוק של אלפית שנייה.
+    זמני הצלילים מזיהוי גובה הצליל מדויקים רק עד כמה מאיות שנייה - לא מספיק לסינכרון של ליווי."""
+    hop = int(0.002 * SR)
+    dt = hop / SR
+    n = len(x) // hop
+    env = np.sqrt(np.mean(np.asarray(x[: n * hop], dtype=np.float64).reshape(n, hop) ** 2, axis=1))
+    env = uniform_filter1d(env, 3)
+    out = []
+    for nt in notes:
+        if nt.end - nt.start <= 0.1:
+            continue
+        a, b = int((nt.start - 0.06) / dt), int((nt.start + 0.14) / dt)
+        a, b = max(a, 0), min(b, n)
+        seg = env[a:b]
+        if len(seg) < 10:
+            continue
+        lo_i = int(np.argmin(seg[: max(2, len(seg) // 2)]))
+        peak = float(seg[lo_i:].max())
+        if peak > 2.5 * seg[lo_i] + 1e-6:
+            # יש התקפה ברורה (הקול עלה משקט): הרגע שבו הוא עובר רבע מהעוצמה
+            above = np.where(seg[lo_i:] >= seg[lo_i] + 0.25 * (peak - seg[lo_i]))[0]
+            out.append((a + lo_i + int(above[0])) * dt)
+        else:
+            out.append(nt.start + 0.028)          # צליל מחובר (לגאטו): מרכז חלון הניתוח
+    return np.array(out)
+
+
+def refine_beats(beats, onsets, rounds=6):
+    """סינכרון עדין: מצמיד את רשת הפעמות לתחילות הצלילים של הזמר.
+    מעקב הפעמות מדויק רק עד מאית שנייה ומפגר כשהזמר מאיץ או מאט; כאן כל פעמה זזה אל הצלילים
+    שהזמר שר סביבה (בהחלקה על פני כמה פעמות - כדי שהליווי ילך עם הזמר ולא יקפוץ אחרי כל צליל)."""
+    b = np.asarray(beats, dtype=float).copy()
+    ons = np.asarray(onsets, dtype=float)
+    if len(b) < 6 or len(ons) < 4:
+        return b
+    for _ in range(rounds):
+        period = np.diff(b)
+        per = np.concatenate([period, period[-1:]])
+        num, den = np.zeros(len(b)), np.zeros(len(b))
+        for t in ons:
+            k = int(np.clip(np.searchsorted(b, t) - 1, 0, len(b) - 2))
+            frac = (t - b[k]) / (b[k + 1] - b[k])
+            if not -0.3 < frac < 1.3:
+                continue
+            sub = round(frac * 2) / 2                       # הפעמה או חצי הפעמה הקרובה
+            off = (frac - sub) * (b[k + 1] - b[k])
+            if abs(off) > 0.2 * per[k]:
+                continue                                    # צליל שלא יושב על הרשת (קישוט) - לא מושך
+            w = 1.0 if sub in (0.0, 1.0) else 0.6
+            i = k + (1 if sub >= 1.0 else 0)
+            num[i] += w * off
+            den[i] += w
+            if sub == 0.5:                                  # חצי פעמה מושכת את שתי השכנות
+                num[k + 1] += w * off
+                den[k + 1] += w
+        if den.sum() < 3:
+            break
+        # ממוצע משוקלל מוחלק: פעמה בלי צלילים מקבלת את התיקון של שכנותיה
+        sm_num = gaussian_filter1d(num, 2.0, mode="nearest")
+        sm_den = gaussian_filter1d(den, 2.0, mode="nearest")
+        shift = np.where(sm_den > 1e-3, sm_num / np.maximum(sm_den, 1e-3), 0.0)
+        b = b + shift
+        if np.max(np.abs(shift)) < 0.002:
+            break
+    # פעמות שאין סביבן צלילים (צליל ארוך בסוף, הפסקה ארוכה): ממשיכות בקצב המקומי של הזמר ולא בקצב הממוצע
+    near = np.array([np.any(np.abs(ons - t) < 1.5 * np.median(np.diff(b))) for t in b])
+    idx = np.where(near)[0]
+    if len(idx) >= 6:
+        first, last = idx[0], idx[-1]
+        if last < len(b) - 1:
+            loc = float(np.median(np.diff(b[max(first, last - 6): last + 1])))
+            b[last + 1:] = b[last] + loc * np.arange(1, len(b) - last)
+        if first > 0:
+            loc = float(np.median(np.diff(b[first: min(last, first + 6) + 1])))
+            b[:first] = b[first] - loc * np.arange(first, 0, -1)
+        for i0, i1 in zip(idx[:-1], idx[1:]):               # הפסקה באמצע: פעמות שוות בין שני הקצוות
+            if i1 - i0 > 1:
+                b[i0:i1 + 1] = np.linspace(b[i0], b[i1], i1 - i0 + 1)
+    if np.any(np.diff(b) <= 0.05):                          # הגנה: הרשת חייבת להישאר עולה
+        return np.asarray(beats, dtype=float)
+    return b
+
+
 def _downbeat(beats, notes, meter=4):
     """בוחר באיזו פעמה מתחילה תיבה: שם מתחילים צלילים ארוכים."""
     sc = np.zeros(meter)
@@ -324,6 +408,8 @@ def analyze(x: np.ndarray, strength: float = 0.8, progress=None):
     else:
         on8 = 0.0
     steady = bool(clarity > 0.18 and on8 > 0.4)
+    if steady:
+        beats = refine_beats(beats, note_onsets(x, notes))
     a = Analysis(f0=f0, midi_c=mc0, tuning=glob, tonic=ranked[0][0], mode=ranked[0][1], notes=notes,
                  correction=None, beats=beats, tempo=tempo, steady=steady,
                  downbeat=0, duration=duration, keys=_distinct(ranked[:1] + theory.rank_keys(w, None)), strength=strength,
