@@ -84,10 +84,12 @@ def parse_sfz(text):
 def _read_wav(repo, path):
     data = subprocess.run(["git", "-C", repo, "show", f"HEAD:{path}"], capture_output=True, check=True).stdout
     x, sr = sf.read(io.BytesIO(data), dtype="float32", always_2d=True)
-    x = x.mean(axis=1)
+    if x.shape[1] == 1:
+        x = np.repeat(x, 2, axis=1)
+    x = x[:, :2]                                     # סטריאו אמיתי: שומרים שמאל וימין
     if sr != SR:
         g = np.gcd(sr, SR)
-        x = resample_poly(x, SR // g, sr // g).astype(np.float32)
+        x = resample_poly(x, SR // g, sr // g, axis=0).astype(np.float32)
     return x
 
 
@@ -120,20 +122,27 @@ def build(repo, name, sfz, max_sec, layers, attack, release, pack):
                 print("missing", path)
                 continue
             # חיתוך שקט בהתחלה ובסוף, ואורך מקסימלי עם דעיכה
-            nz = np.nonzero(np.abs(x) > 10 ** (-50 / 20) * np.abs(x).max())[0]
+            mono = np.abs(x).max(axis=1)
+            nz = np.nonzero(mono > 10 ** (-50 / 20) * mono.max())[0]
             if len(nz):
                 x = x[max(0, nz[0] - 32):]
             x = x[: int(max_sec * SR)]
             f = min(len(x), int(0.15 * SR))
-            x[-f:] *= np.linspace(1, 0, f)
+            x[-f:] *= np.linspace(1, 0, f)[:, None]
             peak = np.abs(x).max() + 1e-9
-            pack[key] = np.round(x / peak * 0.9 * 32767).astype(np.int16)
+            q = np.round(x / peak * 0.9 * 32767).astype(np.int16)
+            pack[key] = np.ascontiguousarray(q[:, 0])
+            stereo = not np.allclose(q[:, 0], q[:, 1], atol=64)
+            if stereo:
+                pack[key + "_R"] = np.ascontiguousarray(q[:, 1])
             vol_db = float(float(r.get("volume", 0)) + 20 * np.log10(peak / 0.9))
             vlo = 0 if i == 0 else int(rs[i - 1].get("hivel", 127)) + 1
             out.append({"key": key, "lo": lo, "hi": hi, "vlo": vlo, "vhi": 127 if i == len(rs) - 1 else int(r.get("hivel", 127)),
                         "root": _num(r.get("pitch_keycenter", r.get("key", str(lo)))),
                         "tune": float(r.get("tune", 0)), "sr": SR, "loop": None, "att_db": -vol_db * 0.5,
                         "attack": attack, "decay": 1.0, "sustain_db": 0.0, "release": release})
+            if stereo:
+                out[-1]["right"] = key + "_R"
             _done[key] = (None, out[-1])
     return out
 

@@ -86,6 +86,10 @@ class Worker(QThread):
             self.finished_ok.emit(self.fn(report))
         except AudioError as e:
             self.failed.emit(str(e))
+        except MemoryError:
+            log_error(traceback.format_exc())
+            self.failed.emit("השיר ארוך מדי בשביל הזיכרון של המחשב.\n"
+                             "נסו לסגור תוכנות אחרות, או לחלק את השיר לשני חלקים.")
         except Exception:
             log_error(traceback.format_exc())
             self.failed.emit("משהו השתבש בזמן הכנת השיר.\nנסה שוב. אם זה חוזר, הפעל מחדש את התוכנה.")

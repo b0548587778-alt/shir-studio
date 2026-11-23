@@ -113,3 +113,39 @@ def test_batch_and_pitch_curves(tmp_path):
 def test_click_track():
     c = click_track(120, 4, 2.0)
     assert len(c) == 2 * SR and np.abs(c).max() > 0.2
+
+
+def test_metronome_stream_is_seamless(monkeypatch):
+    """מדמה כרטיס קול: בודק שהמטרונום מנגן תקתוקים בקצב הנכון וברצף, גם בין קטעים."""
+    import shir_studio.audio.devices as dev
+    got = {}
+
+    class FakeStream:
+        def __init__(self, samplerate, channels, dtype, callback):
+            got["cb"] = callback
+
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+        def close(self):
+            pass
+
+    class FakeSD:
+        OutputStream = FakeStream
+    monkeypatch.setattr(dev, "_sd", lambda: FakeSD)
+    m = dev.Metronome()
+    m.start(120, 4)
+    out = []
+    for _ in range(200):                                  # 200 קטעים של 512 דגימות (כ-2.3 שניות)
+        buf = np.zeros((512, 1), np.float32)
+        got["cb"](buf, 512, None, None)
+        out.append(buf[:, 0].copy())
+    m.stop()
+    y = np.concatenate(out)
+    onsets = np.where((np.abs(y[1:]) > 0.05) & (np.abs(y[:-1]) <= 0.05))[0]
+    starts = [onsets[0]] + [o for a, o in zip(onsets, onsets[1:]) if o - a > SR * 0.2]
+    gaps = np.diff(starts) / SR
+    assert len(starts) >= 4 and np.allclose(gaps, 0.5, atol=0.01)     # 120 BPM = תקתוק כל חצי שנייה

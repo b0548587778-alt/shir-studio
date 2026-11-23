@@ -114,6 +114,12 @@ def drum(name, vel, variant=None):
             x = _pack[r["key"]].astype(np.float32) / 32768.0
             if r["sr"] != SR:
                 x = _play(r, r["sr"] / SR, int(len(x) * SR / r["sr"]))
+            if r.get("right"):                               # תוף בסטריאו אמיתי
+                xr = _pack[r["right"]].astype(np.float32) / 32768.0
+                if r["sr"] != SR:
+                    xr = _play(r, r["sr"] / SR, int(len(xr) * SR / r["sr"]), r["right"])
+                k = min(len(x), len(xr))
+                x = np.stack([x[:k], xr[:k]], axis=1)
             # השכבה כבר בעוצמה הנכונה; התאמה עדינה בתוך השכבה + איזון כללי
             return (x * (0.75 + 0.35 * vel) * 0.9).astype(np.float32)
     return _gm_drum(name, vel)
