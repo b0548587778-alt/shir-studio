@@ -52,7 +52,7 @@ def sheet_data(song, title="השיר שלי"):
         sections.append(("", bars))
     info = [f"סולם: {NOTE_NAMES[(a.tonic + tp) % 12]} {MODES[a.mode][0]}"]
     if a.steady:
-        info += [f"קצב: ⁦{int(round(a.tempo))} BPM⁩", f"משקל: ⁦{a.meter}/4⁩"]
+        info += [f"קצב: ⁦{int(round(a.tempo))} BPM⁩", f"משקל: ⁦{'6/8' if getattr(a, 'compound', False) else str(a.meter) + '/4'}⁩"]
     else:
         info.append("קצב חופשי - כל אקורד נמשך כשתי שניות")
     return {"title": title, "info": "   ·   ".join(info), "sections": sections}

@@ -166,7 +166,8 @@ class MainWindow(QMainWindow):
         try:
             self.recorder.start()
             if self.home.metro_on.isChecked():
-                self.metronome.start(self.home.metro_bpm.value(), self.settings.meter)
+                m = self.settings.meter
+                self.metronome.start(self.home.metro_bpm.value(), 2 if m == 6 else m)
         except AudioError as e:
             self.recorder.stop()
             self.metronome.stop()
@@ -454,7 +455,7 @@ class MainWindow(QMainWindow):
     def _run(self, fn, done, back=None, fail_text=None):
         """מריץ עבודה ארוכה ברקע, עם מסך ההמתנה."""
         self.worker = self._keep(Worker(fn, fail_text) if fail_text else Worker(fn))
-        self.worker.progress.connect(self.work.bar.setValue)
+        self.worker.progress.connect(self.work.set_progress)
         self.worker.message.connect(self.work.title.setText)
         self.worker.finished_ok.connect(done)
         self.worker.failed.connect(lambda m: (self.error(m), (back or self.go_home)()))

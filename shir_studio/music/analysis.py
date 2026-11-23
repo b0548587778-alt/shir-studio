@@ -37,6 +37,7 @@ class Analysis:
     meter: int = 4                # פעמות בתיבה
     chords_per_bar: int = 2
     transpose: int = 0
+    compound: bool = False        # משקל 6/8: שתי פעמות בתיבה, כל אחת מתחלקת לשלוש
     auto: dict = field(default_factory=dict)     # הערכים שזוהו אוטומטית
     note_edits: dict = None       # תיקון ידני לצליל: {מפתח הצליל: חצאי טונים מהיעד האוטומטי, או "off"}
     modulate_at: float = None     # עליית סולם: מאיזה רגע הליווי עולה (None = בלי)
@@ -400,10 +401,41 @@ def manual_grid(a, bpm):
     return np.arange(start if start >= 0 else start + period, a.duration + period, period)
 
 
+def vocal_range(a):
+    """המנעד של הזמר בשיר (midi): הנמוך, הגבוה והאמצע - לפי משך הצלילים."""
+    notes = [nt for nt in a.notes if nt.end - nt.start > 0.1] or list(a.notes)
+    if not notes:
+        return None
+    ps = np.array([nt.pitch for nt in notes])
+    w = np.array([nt.end - nt.start for nt in notes])
+    order = np.argsort(ps)
+    cw = np.cumsum(w[order]) / w.sum()
+    q = lambda f: float(ps[order][min(len(ps) - 1, int(np.searchsorted(cw, f)))])
+    return q(0.03), q(0.97), q(0.5)
+
+
+def suggest_transpose(a):
+    """המלצה לטרנספוזיציה לפי גובה הקול: קול גברי נוח סביב רה-לה (קטנה), קול אישה/ילד אוקטבה מעל.
+    מחזיר מספר חצאי טונים (0 = השיר כבר בגובה נוח)."""
+    r = vocal_range(a)
+    if r is None:
+        return 0
+    mid = r[2]
+    lo_c, hi_c = (50.0, 57.0) if mid < 59.5 else (62.0, 69.0)
+    if mid < lo_c:
+        d = lo_c - mid
+    elif mid > hi_c:
+        d = hi_c - mid
+    else:
+        return 0
+    return int(np.clip(round(d), -4, 4))            # מעבר לזה הקול כבר נשמע לא טבעי
+
+
 def apply_settings(a, st):
     """מחיל הגדרות מתקדמות של המשתמש על הניתוח האוטומטי."""
-    a.meter = st.meter
-    a.chords_per_bar = st.chords_per_bar if st.meter == 4 else 1
+    a.compound = st.meter == 6                 # 6/8: שתי פעמות (מנוקדות) בתיבה
+    a.meter = 2 if a.compound else st.meter
+    a.chords_per_bar = st.chords_per_bar if st.meter in (4, 6) else 1
     a.transpose = st.transpose
     a.strength = st.tune / 100
     a.note_edits = getattr(st, "note_edits", None) or None

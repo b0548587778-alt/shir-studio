@@ -19,10 +19,10 @@ class Settings:
     """הגדרות מתקדמות. ערכי ברירת המחדל = מה שמשתמש רגיל מקבל."""
     denoise: int = 100          # 0-100
     tune: int = 80              # עוצמת תיקון הזיופים 0-100
-    key: tuple = None           # (טוניקה 0-11, 'major'/'minor'/'ahava'/'misheberach') או None = אוטומטי
+    key: tuple = None           # (טוניקה 0-11, 'major'/'minor'/'ahava'/'misheberach'/'adonai') או None = אוטומטי
     tempo_mode: str = "auto"    # auto / manual / free
     bpm: float = 0
-    meter: int = 4              # 4 או 3
+    meter: int = 4              # 4, 3 או 6 (= 6/8)
     chords_per_bar: int = 2     # 1 או 2
     chords_text: str = ""       # אקורדים שהמוזיקאי כתב (ריק = אוטומטי)
     transpose: int = 0          # חצאי טונים
@@ -126,8 +126,15 @@ class Song:
         """הליווי לא מתאים? עוברים לסולם הבא בסדר ההתאמה."""
         set_key(self.analysis, self.analysis.key_index + 1)
 
+    @staticmethod
+    def _style_meter(style, st):
+        """סגנון שנכתב למשקל מסוים (ואלס = 3/4, ניגון 6/8) קובע את המשקל, אם המשתמש לא בחר אחרת."""
+        import dataclasses
+        m = style.get("meter")
+        return dataclasses.replace(st, meter=int(m)) if (m in (3, 6) and st.meter == 4) else st
+
     def make(self, style, progress, settings=None):
-        st = settings or Settings()
+        st = self._style_meter(style, settings or Settings())
         if self.analysis is None or self._prep != st.prep_key():
             self.prepare(progress, st)
         self._apply(st)
@@ -164,7 +171,7 @@ class Song:
     def preview(self, style, progress, settings=None, seconds=25.0):
         """האזנה מהירה: רק ההתחלה של השיר (בערך 25 שניות) - כדי לבחור סגנון בלי לחכות לשיר כולו."""
         import copy
-        st = settings or Settings()
+        st = self._style_meter(style, settings or Settings())
         if self.analysis is None or self._prep != st.prep_key():
             self.prepare(progress, st)
         self._apply(st, modulate=False)          # בהאזנה המהירה שומעים רק את ההתחלה
@@ -220,7 +227,18 @@ class Song:
         a = self.analysis
         return {"key": key_name(a.tonic, a.mode), "tempo": int(round(a.tempo)), "steady": a.steady,
                 "tonic": a.tonic, "mode": a.mode, "chords": chords_as_text(a), "meter": a.meter,
-                "phrases": self.phrases()}
+                "phrases": self.phrases(), "voice": self.voice_info()}
+
+    def voice_info(self):
+        """המנעד של הזמר והמלצה לטרנספוזיציה."""
+        from .music.analysis import vocal_range, suggest_transpose
+        from .music.theory import NOTE_NAMES
+        r = vocal_range(self.analysis)
+        if r is None:
+            return None
+        name = lambda m: f"{NOTE_NAMES[int(round(m)) % 12]}{int(round(m)) // 12 - 1}"
+        return {"low": name(r[0] + self.analysis.tuning), "high": name(r[1] + self.analysis.tuning),
+                "suggest": suggest_transpose(self.analysis)}
 
     def stems(self, progress=None):
         """הקול והליווי בנפרד. אם לא נשמרו - מכינים את השיר שוב, הפעם עם שניהם."""

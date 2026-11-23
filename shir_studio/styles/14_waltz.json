@@ -1,0 +1,165 @@
+{
+ "name": "ואלס חסידי",
+ "description": "משקל 3/4 מתנדנד: אקורדיון, כינור וקונטרבס",
+ "order": 14,
+ "meter": 3,
+ "reverb": 0.25,
+ "accomp_db": -5,
+ "tracks": [
+  {
+   "instrument": "acoustic_bass",
+   "octave": 2,
+   "volume": 0.9,
+   "pan": 0,
+   "bar": [
+    {
+     "t": 0,
+     "n": "root",
+     "v": 0.8,
+     "d": 0.9
+    }
+   ]
+  },
+  {
+   "instrument": "accordion",
+   "octave": 4,
+   "volume": 0.5,
+   "pan": -0.3,
+   "bar": [
+    {
+     "t": 1,
+     "n": "chord",
+     "v": 0.5,
+     "d": 0.35
+    },
+    {
+     "t": 2,
+     "n": "chord",
+     "v": 0.45,
+     "d": 0.35
+    }
+   ]
+  },
+  {
+   "instrument": "guitar",
+   "octave": 3,
+   "volume": 0.45,
+   "pan": 0.3,
+   "enter": 2,
+   "bar": [
+    {
+     "t": 0,
+     "n": "root",
+     "v": 0.5,
+     "d": 0.9
+    },
+    {
+     "t": 1,
+     "n": "chord",
+     "v": 0.4,
+     "d": 0.4,
+     "strum": 0.012
+    },
+    {
+     "t": 2,
+     "n": "chord",
+     "v": 0.4,
+     "d": 0.4,
+     "strum": 0.012
+    }
+   ]
+  },
+  {
+   "instrument": "violin",
+   "octave": 4,
+   "volume": 0.3,
+   "pan": 0.2,
+   "enter": 8,
+   "bar": [
+    {
+     "t": 0,
+     "n": "third_hi",
+     "v": 0.45,
+     "d": 2.9
+    }
+   ]
+  },
+  {
+   "instrument": "drums",
+   "volume": 0.45,
+   "bar": [
+    {
+     "t": 0,
+     "n": "kick",
+     "v": 0.7
+    },
+    {
+     "t": 1,
+     "n": "hat",
+     "v": 0.4
+    },
+    {
+     "t": 2,
+     "n": "hat",
+     "v": 0.45
+    }
+   ],
+   "fill": [
+    {
+     "t": 2,
+     "n": "snare",
+     "v": 0.5
+    },
+    {
+     "t": 2.5,
+     "n": "snare",
+     "v": 0.65
+    }
+   ]
+  }
+ ],
+ "free": [
+  {
+   "instrument": "accordion",
+   "octave": 4,
+   "volume": 0.5,
+   "pan": -0.2,
+   "seg": [
+    {
+     "t": 0,
+     "d": "seg",
+     "n": "chord",
+     "v": 0.45
+    }
+   ]
+  },
+  {
+   "instrument": "acoustic_bass",
+   "octave": 2,
+   "volume": 0.7,
+   "pan": 0,
+   "seg": [
+    {
+     "t": 0,
+     "d": "seg",
+     "n": "root",
+     "v": 0.5
+    }
+   ]
+  },
+  {
+   "instrument": "violin",
+   "octave": 4,
+   "volume": 0.3,
+   "pan": 0.2,
+   "seg": [
+    {
+     "t": 0,
+     "d": "seg",
+     "n": "fifth",
+     "v": 0.35
+    }
+   ]
+  }
+ ]
+}

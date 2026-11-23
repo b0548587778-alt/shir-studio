@@ -1,0 +1,222 @@
+{
+ "name": "ניגון מתנדנד (6/8)",
+ "description": "משקל 6/8 כמו ניגוני שבת: גיטרה, פסנתר ומיתרים",
+ "order": 17,
+ "meter": 6,
+ "reverb": 0.28,
+ "accomp_db": -5,
+ "tracks": [
+  {
+   "instrument": "acoustic_bass",
+   "octave": 2,
+   "volume": 0.9,
+   "pan": 0,
+   "bar": [
+    {
+     "t": 0,
+     "n": "root",
+     "v": 0.8,
+     "d": 1.6
+    },
+    {
+     "t": 2,
+     "n": "fifth_low",
+     "v": 0.65,
+     "d": 1.6
+    }
+   ]
+  },
+  {
+   "instrument": "guitar",
+   "octave": 3,
+   "volume": 0.6,
+   "pan": -0.3,
+   "bar": [
+    {
+     "t": 0,
+     "n": "root",
+     "v": 0.55,
+     "d": 0.6
+    },
+    {
+     "t": 1,
+     "n": "chord",
+     "v": 0.4,
+     "d": 0.5,
+     "strum": 0.012
+    },
+    {
+     "t": 1.5,
+     "n": "chord",
+     "v": 0.4,
+     "d": 0.5,
+     "strum": 0.012
+    },
+    {
+     "t": 2,
+     "n": "fifth",
+     "v": 0.5,
+     "d": 0.6
+    },
+    {
+     "t": 3,
+     "n": "chord",
+     "v": 0.4,
+     "d": 0.5,
+     "strum": 0.012
+    },
+    {
+     "t": 3.5,
+     "n": "chord",
+     "v": 0.4,
+     "d": 0.5,
+     "strum": 0.012
+    }
+   ]
+  },
+  {
+   "instrument": "piano",
+   "octave": 3,
+   "volume": 0.5,
+   "pan": 0.25,
+   "enter": 4,
+   "bar": [
+    {
+     "t": 0,
+     "n": "chord",
+     "v": 0.4,
+     "d": 1.9
+    },
+    {
+     "t": 2,
+     "n": "chord",
+     "v": 0.35,
+     "d": 1.9
+    }
+   ]
+  },
+  {
+   "instrument": "slow_strings",
+   "octave": 4,
+   "volume": 0.4,
+   "pan": 0.15,
+   "enter": 8,
+   "bar": [
+    {
+     "t": 0,
+     "n": "chord",
+     "v": 0.4,
+     "d": 4
+    }
+   ]
+  },
+  {
+   "instrument": "drums",
+   "volume": 0.5,
+   "bar": [
+    {
+     "t": 0,
+     "n": "kick",
+     "v": 0.8
+    },
+    {
+     "t": 2,
+     "n": "snare",
+     "v": 0.6
+    },
+    {
+     "t": 0,
+     "n": "hat",
+     "v": 0.35
+    },
+    {
+     "t": 1,
+     "n": "hat",
+     "v": 0.35
+    },
+    {
+     "t": 1.5,
+     "n": "hat",
+     "v": 0.35
+    },
+    {
+     "t": 2,
+     "n": "hat",
+     "v": 0.35
+    },
+    {
+     "t": 3,
+     "n": "hat",
+     "v": 0.35
+    },
+    {
+     "t": 3.5,
+     "n": "hat",
+     "v": 0.35
+    }
+   ],
+   "fill": [
+    {
+     "t": 2,
+     "n": "snare",
+     "v": 0.5
+    },
+    {
+     "t": 3,
+     "n": "snare",
+     "v": 0.6
+    },
+    {
+     "t": 3.5,
+     "n": "snare",
+     "v": 0.75
+    }
+   ]
+  }
+ ],
+ "free": [
+  {
+   "instrument": "guitar",
+   "octave": 3,
+   "volume": 0.7,
+   "pan": -0.2,
+   "seg": [
+    {
+     "t": 0,
+     "d": "seg",
+     "n": "chord",
+     "v": 0.45,
+     "strum": 0.03
+    }
+   ]
+  },
+  {
+   "instrument": "slow_strings",
+   "octave": 4,
+   "volume": 0.45,
+   "pan": 0.2,
+   "seg": [
+    {
+     "t": 0,
+     "d": "seg",
+     "n": "chord",
+     "v": 0.4
+    }
+   ]
+  },
+  {
+   "instrument": "acoustic_bass",
+   "octave": 2,
+   "volume": 0.7,
+   "pan": 0,
+   "seg": [
+    {
+     "t": 0,
+     "d": "seg",
+     "n": "root",
+     "v": 0.5
+    }
+   ]
+  }
+ ]
+}

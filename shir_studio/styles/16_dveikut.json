@@ -1,0 +1,145 @@
+{
+ "name": "ניגון דבקות",
+ "description": "איטי ושקט, בלי תופים: נבל, צ'לו ומיתרים רכים",
+ "order": 16,
+ "reverb": 0.45,
+ "accomp_db": -7,
+ "rich_chords": true,
+ "lead": "violin",
+ "tracks": [
+  {
+   "instrument": "harp",
+   "octave": 3,
+   "volume": 0.8,
+   "pan": -0.15,
+   "bar": [
+    {
+     "t": 0,
+     "n": "root_low",
+     "v": 0.5,
+     "d": 3.8
+    },
+    {
+     "t": 0.5,
+     "n": "fifth_low",
+     "v": 0.35,
+     "d": 1.5
+    },
+    {
+     "t": 1,
+     "n": "root",
+     "v": 0.4,
+     "d": 1.5
+    },
+    {
+     "t": 1.5,
+     "n": "third",
+     "v": 0.4,
+     "d": 1.5
+    },
+    {
+     "t": 2,
+     "n": "fifth",
+     "v": 0.4,
+     "d": 1.5
+    },
+    {
+     "t": 3,
+     "n": "third",
+     "v": 0.35,
+     "d": 1.0
+    }
+   ]
+  },
+  {
+   "instrument": "slow_strings",
+   "octave": 4,
+   "volume": 0.45,
+   "pan": 0.2,
+   "enter": 2,
+   "bar": [
+    {
+     "t": 0,
+     "n": "chord",
+     "v": 0.4,
+     "d": 4
+    }
+   ]
+  },
+  {
+   "instrument": "cello",
+   "octave": 3,
+   "volume": 0.4,
+   "pan": -0.25,
+   "enter": 4,
+   "bar": [
+    {
+     "t": 0,
+     "n": "root",
+     "v": 0.45,
+     "d": 4
+    }
+   ]
+  },
+  {
+   "instrument": "oboe",
+   "octave": 5,
+   "volume": 0.2,
+   "pan": 0.3,
+   "enter": 8,
+   "bar": [
+    {
+     "t": 0,
+     "n": "third",
+     "v": 0.4,
+     "d": 3.8
+    }
+   ]
+  }
+ ],
+ "free": [
+  {
+   "instrument": "harp",
+   "octave": 3,
+   "volume": 0.8,
+   "pan": -0.1,
+   "seg": [
+    {
+     "t": 0,
+     "d": "seg",
+     "n": "chord",
+     "v": 0.45,
+     "strum": 0.06
+    }
+   ]
+  },
+  {
+   "instrument": "slow_strings",
+   "octave": 4,
+   "volume": 0.5,
+   "pan": 0.2,
+   "seg": [
+    {
+     "t": 0,
+     "d": "seg",
+     "n": "chord",
+     "v": 0.4
+    }
+   ]
+  },
+  {
+   "instrument": "cello",
+   "octave": 3,
+   "volume": 0.4,
+   "pan": -0.2,
+   "seg": [
+    {
+     "t": 0,
+     "d": "seg",
+     "n": "root",
+     "v": 0.4
+    }
+   ]
+  }
+ ]
+}
