@@ -5,6 +5,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox, QSlider, QLabel, QComboBox,
     QSpinBox, QRadioButton, QButtonGroup, QPlainTextEdit, QPushButton, QCheckBox, QScrollArea,
+    QLineEdit,
     QWidget,
 )
 
@@ -45,7 +46,7 @@ def _db(v):
 
 
 class AdvancedDialog(QDialog):
-    def __init__(self, parent, settings: Settings, info=None, extras=False, fmt="mp3", style=None):
+    def __init__(self, parent, settings: Settings, info=None, extras=False, fmt="mp3", style=None, artist=""):
         super().__init__(parent)
         self.setWindowTitle("אפשרויות מתקדמות")
         self.setLayoutDirection(Qt.RightToLeft)
@@ -111,6 +112,12 @@ class AdvancedDialog(QDialog):
         self.choir = QCheckBox("מקהלה - הקול נשמע כמו כמה זמרים")
         self.choir.setChecked(bool(settings.choir))
         f.addRow("", self.choir)
+        from .audio.polish import TONES
+        self.voice_tone = QComboBox()
+        for val, name in TONES.items():
+            self.voice_tone.addItem(name, val)
+        self.voice_tone.setCurrentIndex(max(0, self.voice_tone.findData(settings.voice_tone)))
+        f.addRow("אופי הקול:", self.voice_tone)
         v.addWidget(g)
 
         # ---- מוזיקה
@@ -159,6 +166,12 @@ class AdvancedDialog(QDialog):
         self.reverb = _slider(0, 200, settings.reverb, lambda x: f"{x}%")
         f.addRow("עוצמת הליווי:", self.accomp_db)
         f.addRow("הדהוד (ריוורב):", self.reverb)
+        from .audio.mix import SPACE_NAMES
+        self.space = QComboBox()
+        for val, name in SPACE_NAMES.items():
+            self.space.addItem(name, val)
+        self.space.setCurrentIndex(max(0, self.space.findData(settings.space)))
+        f.addRow("גודל האולם:", self.space)
         self.modulate = QCheckBox("עליית סולם (חצי טון) בפזמון האחרון - הקול והליווי עולים יחד")
         self.modulate.setChecked(bool(settings.modulate))
         f.addRow("", self.modulate)
@@ -240,9 +253,19 @@ class AdvancedDialog(QDialog):
         self.fmt = QComboBox()
         self.fmt.addItem("MP3", "mp3")
         self.fmt.addItem("WAV (איכות מלאה)", "wav")
-        self.fmt.setCurrentIndex(0 if fmt == "mp3" else 1)
+        self.fmt.addItem("FLAC (איכות מלאה, קובץ קטן יותר)", "flac")
+        self.fmt.setCurrentIndex(max(0, self.fmt.findData(fmt)))
         self.extras = QCheckBox("שמור גם קול וליווי בקבצים נפרדים + קובץ MIDI")
         self.extras.setChecked(extras)
+        from .audio.loudness import NAMES as LOUD_NAMES
+        self.loudness = QComboBox()
+        for val, name in LOUD_NAMES.items():
+            self.loudness.addItem(name, val)
+        self.loudness.setCurrentIndex(max(0, self.loudness.findData(settings.loudness)))
+        f.addRow("עוצמת השיר:", self.loudness)
+        self.artist = QLineEdit(artist or "")
+        self.artist.setPlaceholderText("נכתב בתוך קובץ ה-MP3 ומופיע בנגן")
+        f.addRow("שם הזמר:", self.artist)
         f.addRow("סוג קובץ:", self.fmt)
         f.addRow("", self.extras)
         v.addWidget(g)
@@ -293,4 +316,6 @@ class AdvancedDialog(QDialog):
             voice_db=self.voice_db.slider.value(), accomp_db=self.accomp_db.slider.value(),
             reverb=self.reverb.slider.value(), harmony=self.harmony.currentData(),
             choir=self.choir.isChecked(), sections=self._sections(),
+            voice_tone=self.voice_tone.currentData(), space=self.space.currentData(),
+            loudness=self.loudness.currentData(),
             swaps={k: cb.currentData() for k, cb in self.swaps.items() if cb.currentData() != k} or None)
