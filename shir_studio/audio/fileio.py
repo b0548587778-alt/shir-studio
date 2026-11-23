@@ -36,6 +36,21 @@ def load(path: str) -> np.ndarray:
     return data
 
 
+def load_stereo(path: str) -> np.ndarray:
+    """שיר מוכן (עם ליווי) בסטריאו - למחרוזת."""
+    try:
+        data, sr = sf.read(path, dtype="float32", always_2d=True)
+    except Exception:
+        raise AudioError("לא הצלחתי לפתוח את הקובץ.\nבחר קובץ שיר אחר (למשל קובץ שנגמר ב-mp3 או wav).")
+    data = data[:, :2] if data.shape[1] > 1 else np.repeat(data, 2, axis=1)
+    if sr != SR:
+        g = gcd(sr, SR)
+        data = resample_poly(data, SR // g, sr // g, axis=0).astype(np.float32)
+    if len(data) < SR:
+        raise AudioError("הקובץ קצר מדי.")
+    return np.ascontiguousarray(data, dtype=np.float32)
+
+
 def save(path: str, data: np.ndarray, bitrate: int = 256) -> None:
     data = np.clip(np.asarray(data, dtype=np.float32), -1.0, 1.0)
     try:

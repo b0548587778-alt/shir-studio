@@ -33,16 +33,17 @@ class Settings:
     choir: bool = False         # מקהלה: כמה עותקים של הקול עם הבדלים קטנים
     swaps: dict = None          # החלפת כלים בסגנון: {"clarinet": "violin"}
     sections: list = None       # בית/פזמון ידני לכל משפט: [0, 1, 0, 1] (None = אוטומטי)
-    note_fixes: list = None     # תיקון ידני של צלילים: [[זמן בשניות, צליל midi], ...]
-    lift: int = 0               # עליית טון בפזמון האחרון: 0, 1 או 2 חצאי טונים
+    modulate: bool = False      # עליית סולם (חצי טון) בפזמון האחרון - הקול והליווי יחד
+    note_edits: dict = None     # תיקון ידני מהגרף: {מפתח הצליל: חצאי טונים, או "off" = בלי תיקון}
 
     def prep_key(self):
         return (self.denoise,)
 
 
 class Song:
-    def __init__(self, raw):
+    def __init__(self, raw, grid=None):
         self.raw = raw
+        self.grid = grid              # (פעמות, קצב, קבוע?) ידועים מראש - כששרו על ליווי קיים
         self.clean = None
         self.tuned = None
         self.analysis = None
@@ -64,29 +65,38 @@ class Song:
                              progress=lambda p: progress(2 + p * 0.18, None))
         progress(22, "מזהה את המנגינה והקצב...")
         self.analysis = analyze(self.clean, progress=lambda p: progress(22 + p * 0.2, None))
+        if self.grid:
+            from .music.analysis import use_grid
+            use_grid(self.analysis, *self.grid)
         self._prep = st.prep_key()
         self._tune_key = None
 
-    def _apply(self, st):
-        """מחיל את ההגדרות על הניתוח (סולם, קצב, תיקונים ידניים, בית/פזמון, עליית טון)."""
-        from .music import arrange
-        a = apply_settings(self.analysis, st)
+    def _apply(self, st, modulate=True):
+        """מחיל את ההגדרות על הניתוח, וקובע אם ומתי הסולם עולה."""
+        from .music.arrange import modulation
+        a = self.analysis
+        apply_settings(a, st)
         a.sections_override = st.sections
-        a.lift = int(st.lift or 0)
-        a.lift_t = arrange.lift_time(a) if a.lift else None
-        return a
+        m = modulation(a) if (st.modulate and modulate) else None
+        a.modulate_at, a.modulate_voice = m if m else (None, None)
 
-    @staticmethod
-    def _fix_key(st, a):
-        return (tuple((round(float(t), 3), int(m)) for t, m in (st.note_fixes or ())),
-                st.lift, a.lift_t)
+    def _up(self):
+        """עליית הסולם של הקול: חצאי טונים לכל פריים (0 עד הרגע שבו עולים)."""
+        from .audio.pitch import FRAME_SEC
+        from .music.arrange import MOD_UP
+        a = self.analysis
+        if a.modulate_voice is None:
+            return 0.0
+        return np.where(np.arange(len(a.f0)) * FRAME_SEC >= a.modulate_voice, float(MOD_UP), 0.0)
+
+    def _edits_key(self, st):
+        return (repr(sorted((st.note_edits or {}).items())), self.analysis.modulate_voice)
 
     def _retune(self, st):
-        from .music.analysis import lift_curve
         a = self.analysis
-        k = (st.tune, st.transpose, a.tonic, a.mode, a.key_index, self._fix_key(st, a))
+        k = (st.tune, st.transpose, a.tonic, a.mode, a.key_index) + self._edits_key(st)
         if k != self._tune_key:
-            corr = a.correction + st.transpose + lift_curve(a)
+            corr = a.correction + st.transpose + self._up()
             self.tuned = shift(self.clean, a.f0, corr)
             self._tune_key = k
 
@@ -96,17 +106,20 @@ class Song:
             self.harmony = None
             return
         k = (st.harmony, st.tune, st.transpose, a.tonic, a.mode, a.key_index, len(a.chords),
-             st.chords_text, st.meter, st.tempo_mode, st.bpm, self._fix_key(st, a))
+             st.chords_text, st.meter, st.tempo_mode, st.bpm) + self._edits_key(st)
         if k != self._harm_key:
             from .music.harmony import harmony_shift
-            from .music.analysis import correction_for, lift_curve
+            from .music.analysis import correction_for
             # הקול השני תמיד מתוקן מלא - שלא יתנגש עם הקול הראשי
-            full = correction_for(a, strength=1.0) if a.strength > 0 else a.correction
-            full = full + lift_curve(a)
+            full = correction_for(a, 1.0) if a.strength > 0 else a.correction
             modes = ("above", "below") if st.harmony == "three" else (st.harmony,)
-            self.harmony = [shift(self.clean, a.f0, full + st.transpose + harmony_shift(a, m))
+            self.harmony = [shift(self.clean, a.f0, full + st.transpose + self._up() + harmony_shift(a, m))
                             for m in modes]
             self._harm_key = k
+
+    def next_key(self):
+        """הליווי לא מתאים? עוברים לסולם הבא בסדר ההתאמה."""
+        set_key(self.analysis, self.analysis.key_index + 1)
 
     @staticmethod
     def _style_meter(style, st):
@@ -114,10 +127,6 @@ class Song:
         import dataclasses
         m = style.get("meter")
         return dataclasses.replace(st, meter=int(m)) if (m in (3, 6) and st.meter == 4) else st
-
-    def next_key(self):
-        """הליווי לא מתאים? עוברים לסולם הבא בסדר ההתאמה."""
-        set_key(self.analysis, self.analysis.key_index + 1)
 
     def make(self, style, progress, settings=None):
         st = self._style_meter(style, settings or Settings())
@@ -159,7 +168,7 @@ class Song:
         st = self._style_meter(style, settings or Settings())
         if self.analysis is None or self._prep != st.prep_key():
             self.prepare(progress, st)
-        self._apply(st)
+        self._apply(st, modulate=False)          # בהאזנה המהירה שומעים רק את ההתחלה
         self._retune(st)
         a = copy.copy(self.analysis)
         cut = min(a.duration, seconds)
@@ -180,46 +189,19 @@ class Song:
         progress(100, None)
         return out[: int((lead + cut + 2.5) * 44100)]
 
-    def pitch_curves(self, settings=None, fixes=None):
-        """לגרף: זמן, גובה הצליל לפני התיקון ואחריו (בחצאי טונים), והצלילים שזוהו:
-        [(התחלה, סוף, מה שהושר, צליל היעד, ידני?)]. fixes = תיקונים ידניים לבדיקה (בלי לשמור)."""
+    def pitch_curves(self, settings=None):
+        """לגרף: זמן, גובה הצליל לפני התיקון ואחריו (בחצאי טונים), והצלילים הנקיים שזוהו."""
         from .audio.pitch import hz_to_midi, FRAME_SEC
-        from .music.analysis import correction_for, note_targets, lift_curve
         a = self.analysis
         f0 = np.asarray(a.f0, dtype=float)
         voiced = f0 > 0
         before = np.full(len(f0), np.nan)
         before[voiced] = hz_to_midi(f0[voiced])
-        tp = settings.transpose if settings else 0
-        corr = correction_for(a, fixes) + lift_curve(a)
-        after = before + corr[: len(f0)] + tp
+        corr = a.correction if a.correction is not None else np.zeros(len(f0))
+        after = before + corr[: len(f0)] + (settings.transpose if settings else 0)
         t = np.arange(len(f0)) * FRAME_SEC
-        tg = note_targets(a, fixes)
-        return t, before, after, [(nt.start, nt.end, nt.pitch, m + tp, manual)
-                                  for nt, (m, manual) in zip(a.notes, tg)]
-
-    def hear_fix(self, fixes, start, end, settings=None, pad=0.6):
-        """קטע קצר של הקול עם תיקונים ידניים - להאזנה במסך העריכה לפני שמכינים את כל השיר."""
-        from .audio.fileio import SR
-        from .audio.pitch import FRAME_SEC
-        from .music.analysis import correction_for
-        a = self.analysis
-        i0 = max(0, int((start - pad) * SR))
-        i1 = min(len(self.clean), int((end + pad) * SR))
-        f0, f1 = int(i0 / SR / FRAME_SEC), int(np.ceil(i1 / SR / FRAME_SEC)) + 1
-        corr = correction_for(a, fixes)[f0:f1] + (settings.transpose if settings else 0)
-        return shift(self.clean[i0:i1], np.asarray(a.f0)[f0:f1], corr)
-
-    def voice_info(self):
-        """המנעד של הזמר והמלצה לטרנספוזיציה."""
-        from .music.analysis import vocal_range, suggest_transpose
-        from .music.theory import NOTE_NAMES
-        r = vocal_range(self.analysis)
-        if r is None:
-            return None
-        name = lambda m: f"{NOTE_NAMES[int(round(m)) % 12]}{int(round(m)) // 12 - 1}"
-        return {"low": name(r[0] + self.analysis.tuning), "high": name(r[1] + self.analysis.tuning),
-                "suggest": suggest_transpose(self.analysis)}
+        from .music.analysis import note_targets
+        return t, before, after, note_targets(a)
 
     def phrases(self, style=None):
         """משפטי השיר: [(התחלה, סוף, 0=בית/1=פזמון)] - למסך העריכה."""
@@ -241,23 +223,40 @@ class Song:
                 "tonic": a.tonic, "mode": a.mode, "chords": chords_as_text(a), "meter": a.meter,
                 "phrases": self.phrases(), "voice": self.voice_info()}
 
-    def export_extras(self, folder, base):
-        """קבצים נפרדים לקול ולליווי (WAV) וקובץ MIDI."""
+    def voice_info(self):
+        """המנעד של הזמר והמלצה לטרנספוזיציה."""
+        from .music.analysis import vocal_range, suggest_transpose
+        from .music.theory import NOTE_NAMES
+        r = vocal_range(self.analysis)
+        if r is None:
+            return None
+        name = lambda m: f"{NOTE_NAMES[int(round(m)) % 12]}{int(round(m)) // 12 - 1}"
+        return {"low": name(r[0] + self.analysis.tuning), "high": name(r[1] + self.analysis.tuning),
+                "suggest": suggest_transpose(self.analysis)}
+
+    def stems(self, progress=None):
+        """הקול והליווי בנפרד. אם לא נשמרו - מכינים את השיר שוב, הפעם עם שניהם."""
         if self.last_stems is None and self._last_make:
-            self.keep_stems = True                     # מכינים שוב, הפעם עם קול וליווי נפרדים
+            self.keep_stems = True
             try:
-                self.make(self._last_make[0], lambda p, m=None: None, self._last_make[1])
+                self.make(self._last_make[0], progress or (lambda p, m=None: None), self._last_make[1])
             finally:
                 self.keep_stems = False
+        return self.last_stems or {}
+
+    def export_extras(self, folder, base):
+        """קבצים נפרדים לקול ולליווי (WAV) וקובץ MIDI."""
+        self.stems()
         paths = []
         for name, data in (self.last_stems or {}).items():
             p = os.path.join(folder, f"{base} - {name}.wav")
             save(p, np.clip(data, -1, 1))
             paths.append(p)
         a = self.analysis
-        from .music.analysis import note_targets
-        up = lambda nt: a.lift if (a.lift and a.lift_t is not None and nt.start >= a.lift_t - 0.3) else 0
-        melody = [(nt.start, nt.end, m + a.transpose + up(nt)) for nt, (m, _) in zip(a.notes, note_targets(a))]
+        from .music.arrange import MOD_UP
+        mv = a.modulate_voice
+        melody = [(nt.start, nt.end, round(nt.pitch) + a.transpose
+                   + (MOD_UP if mv is not None and nt.start >= mv else 0)) for nt in a.notes]
         p = os.path.join(folder, f"{base}.mid")
         midi.write(p, a.tempo if a.steady else 120.0, melody, self.last_tracks, self.last_lead)
         paths.append(p)

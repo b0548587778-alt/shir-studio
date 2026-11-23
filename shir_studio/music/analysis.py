@@ -38,10 +38,10 @@ class Analysis:
     chords_per_bar: int = 2
     transpose: int = 0
     compound: bool = False        # משקל 6/8: שתי פעמות בתיבה, כל אחת מתחלקת לשלוש
-    note_fixes: list = None       # תיקונים ידניים: [[זמן בשניות, צליל midi], ...]
-    lift: int = 0                 # עליית טון בפזמון האחרון (חצאי טונים)
-    lift_t: float = None          # מאיזה רגע בשיר (שניות)
     auto: dict = field(default_factory=dict)     # הערכים שזוהו אוטומטית
+    note_edits: dict = None       # תיקון ידני לצליל: {מפתח הצליל: חצאי טונים מהיעד האוטומטי, או "off"}
+    modulate_at: float = None     # עליית סולם: מאיזה רגע הליווי עולה (None = בלי)
+    modulate_voice: float = None  # ...ומאיזה רגע הקול עולה (בהפסקה שלפני המשפט)
 
 
 def _tuning_curve(midi, voiced):
@@ -109,38 +109,48 @@ def _snap(center, scale):
     return near
 
 
-def manual_targets(notes, fixes):
-    """תיקונים ידניים של המשתמש: {מספר הצליל: צליל היעד}. כל תיקון שייך לצליל שהזמן שלו בתוכו."""
-    out = {}
-    for t, target in fixes or []:
-        for i, nt in enumerate(notes):
-            if nt.start - 0.02 <= float(t) <= nt.end + 0.02:
-                out[i] = int(target)
-                break
+def note_key(nt):
+    """מזהה קבוע של צליל (לפי רגע ההתחלה) - לשמירת תיקונים ידניים."""
+    return str(int(round(nt.start * 100)))
+
+
+def note_edit(edits, nt):
+    if not edits:
+        return None
+    c = int(round(nt.start * 100))
+    for d in (0, 1, -1, 2, -2):
+        if str(c + d) in edits:
+            return edits[str(c + d)]
+    return None
+
+
+def note_targets(a):
+    """לגרף: (התחלה, סוף, מה שהושר, הצליל שאליו מתקנים, מפתח) לכל צליל."""
+    scale = theory.scale_pcs(a.tonic, a.mode)
+    out = []
+    for nt in a.notes:
+        ed = note_edit(a.note_edits, nt)
+        auto = _snap(nt.pitch, scale)
+        tgt = nt.pitch if ed == "off" else auto + (int(ed) if ed is not None else 0)
+        out.append((nt.start, nt.end, nt.pitch, tgt, note_key(nt), auto))
     return out
 
 
-def note_targets(a, fixes=None):
-    """צליל היעד של כל צליל בשיר: [(צליל, ידני?)] - לגרף העריכה."""
-    scale = theory.scale_pcs(a.tonic, a.mode)
-    manual = manual_targets(a.notes, a.note_fixes if fixes is None else fixes)
-    return [(manual[i], True) if i in manual else (_snap(nt.pitch, scale), False)
-            for i, nt in enumerate(a.notes)]
-
-
-def _targets(mc, voiced, notes, scale, strength, manual=None):
+def _targets(mc, voiced, notes, scale, strength, edits=None):
     """תיקון לכל צליל בשלמותו - שומר על הוויברטו והגלישות הטבעיות."""
     corr = np.zeros(len(mc))
     inside = np.zeros(len(mc), bool)
-    manual = manual or {}
-    for i, nt in enumerate(notes):
+    for nt in notes:
         a, b = int(round(nt.start / FRAME_SEC)), int(round(nt.end / FRAME_SEC))
-        inside[a:b] = True                        # גם צליל מדויק (בלי תיקון) הוא 'עוגן' למעברים
-        if i in manual:                           # המשתמש קבע את הצליל בעצמו - תיקון מלא
-            corr[a:b] = manual[i] - nt.pitch
-            continue
         target = _snap(nt.pitch, scale)
         dev = target - nt.pitch
+        inside[a:b] = True                        # גם צליל מדויק (בלי תיקון) הוא 'עוגן' למעברים
+        ed = note_edit(edits, nt)
+        if ed == "off":                           # המשתמש ביקש: את הצליל הזה לא לתקן
+            continue
+        if ed is not None:                        # המשתמש גרר את הצליל - מתקנים בדיוק לשם
+            corr[a:b] = target + int(ed) - nt.pitch
+            continue
         if abs(dev) < 0.08:
             continue
         # צליל שנמצא בדיוק באמצע בין שני צלילים - לא בטוח מה התכוון הזמר, מתקנים פחות
@@ -344,92 +354,28 @@ def set_key(a, index):
     index = index % len(a.keys)
     a.key_index = index
     a.tonic, a.mode = a.keys[index][0], a.keys[index][1]
-    a.correction = correction_for(a)
+    a.correction = correction_for(a, a.strength)
     chords = theory.chords_for(a.tonic, a.mode)
     a.chords = _merge(_choose_chords(chord_segments(a), a.notes, chords))
     return a
 
 
-def correction_for(a, fixes=None, strength=None):
-    """עקומת התיקון (חצאי טונים לכל פריים). fixes/strength = None: לפי מה שקבוע בניתוח."""
-    strength = a.strength if strength is None else strength
+def correction_for(a, strength):
+    """תיקון הקול (חצאי טונים לכל פריים) בעוצמה נתונה, כולל התיקונים הידניים."""
     voiced = a.f0 > 0
     scale = theory.scale_pcs(a.tonic, a.mode)
-    manual = manual_targets(a.notes, a.note_fixes if fixes is None else fixes)
-    corr = _targets(np.nan_to_num(a.midi_c), voiced, a.notes, scale, strength, manual)
-    # בצליל שתוקן ידנית מפצים על ה'זליגה' במלואה - כדי שיגיע בדיוק לצליל שנבחר
-    full = np.zeros(len(corr), bool)
-    for i in manual:
-        full[int(round(a.notes[i].start / FRAME_SEC)):int(round(a.notes[i].end / FRAME_SEC))] = True
-    drift = a.curve_term * np.where(full, 1.0, strength)
-    return gaussian_filter1d(np.where(voiced, corr - drift, 0), 2)
+    corr = _targets(np.nan_to_num(a.midi_c), voiced, a.notes, scale, strength, a.note_edits)
+    total = np.where(voiced, corr - a.curve_term * strength, 0)
+    return gaussian_filter1d(total, 2)
 
 
-def lift_curve(a):
-    """עליית טון בפזמון האחרון: הזזה (חצאי טונים) לכל פריים של הקול."""
-    out = np.zeros(len(a.f0))
-    if a.lift and a.lift_t is not None:
-        # עולים בהפסקה שבין שני צלילים (הקרובה ביותר לתחילת הפזמון) - לא באמצע צליל
-        starts = [nt.start for nt in a.notes if abs(nt.start - a.lift_t) < 1.0]
-        t = min(starts, key=lambda s: abs(s - a.lift_t)) if starts else a.lift_t
-        out[max(0, int(round(t / FRAME_SEC)) - 2):] = a.lift
-    return out
-
-
-def vocal_range(a):
-    """המנעד של הזמר בשיר (midi): הנמוך, הגבוה והאמצע - לפי משך הצלילים."""
-    ps = np.array([nt.pitch for nt in a.notes if nt.end - nt.start > 0.1] or [nt.pitch for nt in a.notes])
-    if not len(ps):
-        return None
-    w = np.array([nt.end - nt.start for nt in a.notes if nt.end - nt.start > 0.1] or [1.0] * len(ps))
-    order = np.argsort(ps)
-    cw = np.cumsum(w[order]) / w.sum()
-    q = lambda f: float(ps[order][min(len(ps) - 1, int(np.searchsorted(cw, f)))])
-    return q(0.03), q(0.97), q(0.5)
-
-
-def suggest_transpose(a):
-    """המלצה לטרנספוזיציה לפי גובה הקול: קול גברי נוח סביב רה-לה (קטנה), קול אישה/ילד אוקטבה מעל.
-    מחזיר מספר חצאי טונים (0 = השיר כבר בגובה נוח)."""
-    r = vocal_range(a)
-    if r is None:
-        return 0
-    lo, hi, mid = r
-    lo_c, hi_c = (50.0, 57.0) if mid < 59.5 else (62.0, 69.0)
-    if mid < lo_c:
-        d = lo_c - mid
-    elif mid > hi_c:
-        d = hi_c - mid
-    else:
-        return 0
-    return int(np.clip(round(d), -4, 4))            # מעבר לזה הקול כבר נשמע לא טבעי
-
-
-def voice_phrases(a, min_gap=0.35, min_len=1.0, max_len=12.0):
-    """משפטי השירה לפי ההפסקות (נשימות): [(התחלה, סוף)] של החלק המושר בכל משפט."""
-    notes = sorted(a.notes, key=lambda n: n.start)
-    groups = []
-    for nt in notes:
-        if groups and (nt.start - groups[-1][-1].end < min_gap
-                       or groups[-1][-1].end - groups[-1][0].start < min_len):
-            groups[-1].append(nt)
-        else:
-            groups.append([nt])
-    if len(groups) > 1 and groups[-1][-1].end - groups[-1][0].start < min_len:
-        groups[-2].extend(groups.pop())
-
-    def split(g):
-        """משפט ארוך מדי (זמר שכמעט לא נושם) - מחלקים בהפסקה הגדולה ביותר שבאמצע."""
-        if g[-1].end - g[0].start <= max_len or len(g) < 4:
-            return [g]
-        best, gap = None, 0.1                        # פחות מזה אינו נשימה אלא מעבר בין צלילים
-        for i in range(1, len(g)):
-            inside = min(g[i - 1].end - g[0].start, g[-1].end - g[i].start)
-            d = max(n.end for n in g[:i])
-            if inside >= 2.5 and g[i].start - d > gap:
-                best, gap = i, g[i].start - d
-        return split(g[:best]) + split(g[best:]) if best else [g]
-    return [(g[0].start, max(n.end for n in g)) for grp in groups for g in split(grp)]
+def use_grid(a, beats, tempo, steady):
+    """קובע את הפעמות מבחוץ - כשהזמר שר על ליווי קיים, הקצב כבר ידוע בדיוק."""
+    a.auto.update(beats=np.asarray(beats, float), tempo=float(tempo), steady=bool(steady))
+    a.beats, a.tempo, a.steady = a.auto["beats"], a.auto["tempo"], a.auto["steady"]
+    if a.steady:
+        a.downbeat = _downbeat(a.beats, a.notes, a.meter)
+    set_key(a, a.key_index)
 
 
 def chord_segments(a):
@@ -455,6 +401,36 @@ def manual_grid(a, bpm):
     return np.arange(start if start >= 0 else start + period, a.duration + period, period)
 
 
+def vocal_range(a):
+    """המנעד של הזמר בשיר (midi): הנמוך, הגבוה והאמצע - לפי משך הצלילים."""
+    notes = [nt for nt in a.notes if nt.end - nt.start > 0.1] or list(a.notes)
+    if not notes:
+        return None
+    ps = np.array([nt.pitch for nt in notes])
+    w = np.array([nt.end - nt.start for nt in notes])
+    order = np.argsort(ps)
+    cw = np.cumsum(w[order]) / w.sum()
+    q = lambda f: float(ps[order][min(len(ps) - 1, int(np.searchsorted(cw, f)))])
+    return q(0.03), q(0.97), q(0.5)
+
+
+def suggest_transpose(a):
+    """המלצה לטרנספוזיציה לפי גובה הקול: קול גברי נוח סביב רה-לה (קטנה), קול אישה/ילד אוקטבה מעל.
+    מחזיר מספר חצאי טונים (0 = השיר כבר בגובה נוח)."""
+    r = vocal_range(a)
+    if r is None:
+        return 0
+    mid = r[2]
+    lo_c, hi_c = (50.0, 57.0) if mid < 59.5 else (62.0, 69.0)
+    if mid < lo_c:
+        d = lo_c - mid
+    elif mid > hi_c:
+        d = hi_c - mid
+    else:
+        return 0
+    return int(np.clip(round(d), -4, 4))            # מעבר לזה הקול כבר נשמע לא טבעי
+
+
 def apply_settings(a, st):
     """מחיל הגדרות מתקדמות של המשתמש על הניתוח האוטומטי."""
     a.compound = st.meter == 6                 # 6/8: שתי פעמות (מנוקדות) בתיבה
@@ -462,7 +438,7 @@ def apply_settings(a, st):
     a.chords_per_bar = st.chords_per_bar if st.meter in (4, 6) else 1
     a.transpose = st.transpose
     a.strength = st.tune / 100
-    a.note_fixes = getattr(st, "note_fixes", None)
+    a.note_edits = getattr(st, "note_edits", None) or None
     # קצב
     if st.tempo_mode == "free":
         a.steady = False

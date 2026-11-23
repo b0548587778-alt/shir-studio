@@ -1,264 +1,271 @@
-"""בדיקות לתכונות: תיקון ידני של צלילים, עליית טון, אדוני מלך, 6/8, עריכת משפטים, דף אקורדים, עדכון."""
+"""בדיקות לשדרוגים: חיתוך, הקלטה מחדש של משפט, תיקון ידני, עליית סולם, מחרוזת,
+דף אקורדים, טעם אישי, גיבוי אוטומטי ובדיקת גרסה."""
 import os
 import numpy as np
 import pytest
+
+import synth_voice
 from synth_voice import sing
+from shir_studio.audio import edit, devices
+from shir_studio.audio.fileio import SR, AudioError, save, load_stereo
+from shir_studio.audio.pitch import yin, hz_to_midi
 from shir_studio.pipeline import Song, Settings
 from shir_studio.music.styles import load_styles
-from shir_studio.music import analysis, arrange, theory
-from shir_studio.audio import edit
-from shir_studio.audio.fileio import SR
-from shir_studio.audio.pitch import yin, hz_to_midi, FRAME_SEC
-from shir_studio.project import settings_to_dict, settings_from_dict
 
-quiet = lambda p, m=None: None
+NOP = lambda p, m=None: None
 
 
-def style(sid):
-    return [s for s in load_styles() if s["id"] == sid][0]
+def _phrased(repeats=1, rest=3, bpm=120):
+    """שירה עם הפסקות (נשימה) בין המשפטים."""
+    old = synth_voice.MELODY
+    mel = []
+    for i in range(0, len(old), 6):
+        mel += old[i:i + 6] + [(None, rest)]
+    synth_voice.MELODY = mel
+    try:
+        return sing(bpm=bpm, repeats=repeats)[0]
+    finally:
+        synth_voice.MELODY = old
 
 
 @pytest.fixture(scope="module")
-def song():
-    x, _ = sing(bpm=120, repeats=3)
+def long_song():
+    x, _ = sing(bpm=120, repeats=4)
     s = Song(x)
-    s.prepare(quiet)
+    s.make(load_styles()[1], NOP, Settings())
     return s
 
 
-def sung_pitch(x, start, end):
-    """הגובה הממוצע (midi) של קטע בקול."""
-    f0, _ = yin(x)
-    seg = f0[int((start + 0.08) / FRAME_SEC):int((end - 0.05) / FRAME_SEC)]
-    return float(np.median(hz_to_midi(seg[seg > 0])))
+def test_trim_removes_silence_only():
+    x, _ = sing(bpm=120, repeats=1)
+    padded = np.concatenate([0.002 * np.random.default_rng(1).standard_normal(3 * SR).astype(np.float32), x,
+                             np.zeros(4 * SR, np.float32)])
+    s, e = edit.auto_trim_range(padded)
+    assert 2.9 < s < 3.6 and e < len(padded) / SR - 3.0
+    y = edit.cut(padded, s, e)
+    assert abs(len(y) / SR - (e - s)) < 0.01 and abs(y[0]) < 1e-6 and abs(y[-1]) < 1e-6
+    with pytest.raises(AudioError):
+        edit.cut(padded, 1.0, 2.0)                       # קטע קצר מדי
 
 
-def long_note(s, k=5):
-    return [nt for nt in s.analysis.notes if nt.end - nt.start > 0.7][k]
+def test_phrases_and_replacing_one_phrase():
+    x = _phrased()
+    slots = edit.phrase_slots(x)
+    assert len(slots) == 4
+    s, e, lo, hi = slots[1]
+    # 'הקלטה חדשה' של המשפט השני: אותה מנגינה חצי טון גבוה יותר, חלשה יותר, עם שקט בהתחלה
+    seg = x[int(s * SR):int(e * SR)]
+    f, _ = yin(seg)
+    from shir_studio.audio.psola import shift
+    take = np.concatenate([np.zeros(SR, np.float32), 0.4 * shift(seg, f, np.ones(len(f)))])
+    y = edit.splice_take(x, lo, hi, take)
+    assert len(y) == len(x)
+    a, b = int(lo * SR), int(hi * SR)
+    assert np.array_equal(y[:a], x[:a]) and np.array_equal(y[b:], x[b:])      # שאר השיר לא נגע
+    f_old, _ = yin(x[int(s * SR):int(e * SR)])
+    f_new, _ = yin(y[int(s * SR):int(e * SR)])
+    ok = (f_old > 0) & (f_new > 0)
+    assert ok.mean() > 0.6                                                   # המשפט החדש יושב באותו מקום
+    assert abs(np.median(hz_to_midi(f_new[ok]) - hz_to_midi(f_old[ok])) - 1.0) < 0.2
+    r = lambda z: np.sqrt(np.mean(z ** 2))
+    assert 0.7 < r(y[a:b]) / r(x[a:b]) < 1.4                                 # אותה עוצמה
+    with pytest.raises(AudioError):
+        edit.splice_take(x, lo, hi, np.zeros(2 * SR, np.float32))            # הקלטה שקטה
 
 
-# ---------- תיקון ידני ----------
-def test_manual_note_fix_moves_only_that_note(song):
-    st0 = Settings(tune=100)
-    song.make(style("02_piano"), quiet, st0)
-    nt = long_note(song)
-    other = long_note(song, 1)
-    auto = sung_pitch(song.tuned, nt.start, nt.end)
-    other_before = sung_pitch(song.tuned, other.start, other.end)
-    target = int(round(auto)) + 2
-    st = Settings(tune=100, note_fixes=[[(nt.start + nt.end) / 2, target]])
-    song.make(style("02_piano"), quiet, st)
-    assert abs(sung_pitch(song.tuned, nt.start, nt.end) - target) < 0.3      # הצליל הגיע לאן שגררו אותו
-    assert abs(sung_pitch(song.tuned, other.start, other.end) - other_before) < 0.15   # האחרים לא זזו
-    notes = song.pitch_curves(st)[3]
-    assert sum(1 for n in notes if n[4]) == 1
-    # גם בלי לשמור: הגרף מחשב תיקון לבדיקה, וחוזר לאוטומטי כשמנקים
-    assert not any(n[4] for n in song.pitch_curves(st, fixes=[])[3])
-    clip = song.hear_fix(st.note_fixes, nt.start, nt.end)
-    assert 0.5 * SR < len(clip) < 4 * SR and np.isfinite(clip).all()
-    song.make(style("02_piano"), quiet, st0)
-    assert abs(sung_pitch(song.tuned, nt.start, nt.end) - auto) < 0.15
+def test_modulation_raises_voice_and_accompaniment(long_song):
+    s = long_song
+    st = load_styles()[1]
+    y = s.make(st, NOP, Settings(modulate=True))
+    a = s.analysis
+    assert a.modulate_at is not None and a.modulate_voice <= a.modulate_at + 0.5
+    assert a.modulate_at > 0.5 * a.duration                    # רק בסוף השיר
+    assert np.isfinite(y).all()
+    up, mod_at, mod_voice = s.tuned, a.modulate_at, a.modulate_voice
+    s.make(st, NOP, Settings())
+    assert s.analysis.modulate_at is None
+    f1, _ = yin(up)
+    f0, _ = yin(s.tuned)
+    k = int(mod_voice / 0.01)
+    ok = (f1 > 0) & (f0 > 0)
+    d = hz_to_midi(np.where(ok, f1, 1)) - hz_to_midi(np.where(ok, f0, 1))
+    assert abs(np.median(d[:k][ok[:k]])) < 0.05                 # לפני העלייה - בלי שינוי
+    assert abs(np.median(d[k:][ok[k:]]) - 1.0) < 0.1            # אחריה - חצי טון למעלה
+    # הליווי: התווים שאחרי רגע העלייה גבוהים בחצי טון
+    s.make(st, NOP, Settings(modulate=True))
+    hi = [(t, m) for spec, _, ev in s.last_tracks if spec["instrument"] != "drums" for t, m, _, _ in ev]
+    s.make(st, NOP, Settings())
+    lo = [(t, m) for spec, _, ev in s.last_tracks if spec["instrument"] != "drums" for t, m, _, _ in ev]
+    assert len(hi) == len(lo)
+    t_mod = mod_at + s.last_lead
+    diffs_before = {mh - ml for (t, mh), (_, ml) in zip(hi, lo) if t < t_mod - 0.2}
+    diffs_after = {mh - ml for (t, mh), (_, ml) in zip(hi, lo) if t > t_mod + 0.2}
+    assert diffs_before == {0} and diffs_after == {1}
 
 
-def test_note_fixes_survive_project_and_advanced_dialog():
-    st = Settings(note_fixes=[[1.25, 64]], lift=1, meter=6)
-    back = settings_from_dict(settings_to_dict(st))
-    assert back.note_fixes == [[1.25, 64]] and back.lift == 1 and back.meter == 6
-
-
-# ---------- עליית טון ----------
-def test_lift_raises_voice_and_accompaniment_in_last_phrase(song):
-    stl = style("02_piano")
-    song.make(stl, quiet, Settings(tune=100))
-    base_events = [e for _, _, ev in song.last_tracks for e in ev]
-    late = [nt for nt in song.analysis.notes if nt.end - nt.start > 0.7][-2]
-    early = long_note(song, 0)
-    p_late, p_early = sung_pitch(song.tuned, late.start, late.end), sung_pitch(song.tuned, early.start, early.end)
-    song.make(stl, quiet, Settings(tune=100, lift=2))
-    a = song.analysis
-    assert a.lift_t is not None and early.end < a.lift_t < late.start
-    assert abs(sung_pitch(song.tuned, late.start, late.end) - p_late - 2) < 0.25
-    assert abs(sung_pitch(song.tuned, early.start, early.end) - p_early) < 0.15
-    ev = [e for _, _, ev in song.last_tracks for e in ev]
-    lead = song.last_lead
-    pcs = lambda evs, lo, hi: sorted({int(m) % 12 for t, m, d, v in evs
-                                      if not isinstance(m, str) and lo <= t - lead < hi})
-    before = pcs(base_events, a.lift_t + 0.5, a.lift_t + 6)
-    after = pcs(ev, a.lift_t + 0.5, a.lift_t + 6)
-    assert after == sorted({(p + 2) % 12 for p in before})
-    assert pcs(ev, 2, a.lift_t - 1) == pcs(base_events, 2, a.lift_t - 1)
-
-
-# ---------- סולם ומשקל ----------
-def test_adonai_malach_mode():
-    w = np.zeros(12)
-    for step, d in zip(theory.MODES["adonai"][1], [6, 2, 4, 2.5, 5, 2, 4]):       # סול מיקסולידי
-        w[(7 + step) % 12] = d
-    t, m, _ = theory.rank_keys(w, final_pc=7)[0]
-    assert (t, m) == (7, "adonai")
-    assert 5 in theory.scale_pcs(7, "adonai") and 6 not in theory.scale_pcs(7, "adonai")   # פה ולא פה#
-    names = {c["degree"] for c in theory.chords_for(7, "adonai")}
-    assert {"I", "IV", "VII"} <= names
-
-
-def test_adonai_key_and_six_eight_render(song):
-    st = Settings(key=(9, "adonai"), meter=6, tempo_mode="manual", bpm=60)
-    y = song.make(style("01_hasidi"), quiet, st)
-    a = song.analysis
-    assert a.mode == "adonai" and a.compound and a.meter == 2
-    assert y.ndim == 2 and np.isfinite(y).all()
-    # בתיבה של 6/8 הצלילים נופלים על שלישי הפעמה
-    beat = 60 / 60
-    frac = []
-    for spec, _, ev in song.last_tracks:
-        if spec["instrument"] == "drums" and not spec.get("solo"):
-            frac += [((t - song.last_lead - a.beats[0]) / beat) % 1 for t, *_ in ev]
-    frac = np.array(frac)
-    near = lambda f: np.minimum(np.abs(frac - f), 1 - np.abs(frac - f)) < 0.06
-    assert len(frac) > 20 and np.mean(near(0) | near(1 / 3) | near(2 / 3)) > 0.9
-    assert np.mean(near(0.5)) < 0.05
-
-
-def test_to_compound_mapping():
-    bar = [{"t": 0, "n": "a"}, {"t": 0.5, "n": "x"}, {"t": 1, "n": "b"}, {"t": 1.5, "n": "c"},
-           {"t": 2, "n": "d"}, {"t": 3, "n": "e"}, {"t": 3.5, "n": "f"}]
-    out = {e["n"]: round(e["t"], 3) for e in arrange.to_compound(bar)}
-    assert out == {"a": 0, "b": 0.333, "c": 0.667, "d": 1, "e": 1.333, "f": 1.667}
-
-
-def test_style_sets_its_meter_and_new_styles_exist(song):
-    ids = {s["id"] for s in load_styles()}
-    assert {"14_waltz", "15_hora", "16_dveikut", "17_six8"} <= ids
-    song.make(style("14_waltz"), quiet, Settings())
-    assert song.analysis.meter == 3
-    song.make(style("17_six8"), quiet, Settings())
-    assert song.analysis.compound
-    song.make(style("14_waltz"), quiet, Settings(meter=6))     # בחירה ידנית של המשתמש גוברת
-    assert song.analysis.compound
-    song.make(style("15_hora"), quiet, Settings())
-    assert song.analysis.meter == 4 and not song.analysis.compound
-
-
-# ---------- מנעד ----------
-def test_vocal_range_and_transpose_suggestion(song):
-    song.make(style("02_piano"), quiet, Settings())
-    lo, hi, mid = analysis.vocal_range(song.analysis)
-    assert 67 <= lo <= 70 and 75 <= hi <= 78 and lo < mid < hi
-    assert -4 <= analysis.suggest_transpose(song.analysis) < 0      # שירה גבוהה מאוד - מומלץ להוריד
-    v = song.info()["voice"]
-    assert v["suggest"] < 0 and v["low"] and v["high"]
-    low, _ = sing(bpm=120, repeats=1)
-    from scipy.signal import resample_poly
-    s2 = Song(resample_poly(low, 3, 2).astype(np.float32))          # אותה מנגינה חמישית נמוך יותר
-    s2.prepare(quiet)
-    assert abs(analysis.suggest_transpose(s2.analysis)) < abs(analysis.suggest_transpose(song.analysis))
-
-
-# ---------- עריכת משפטים ----------
-@pytest.fixture(scope="module")
-def two_phrases():
-    a, _ = sing(bpm=120, repeats=1, seed=1)
-    b, _ = sing(bpm=120, repeats=1, seed=2)
-    x = np.concatenate([a, np.zeros(SR, np.float32), b])
+def test_short_song_does_not_modulate():
+    x, _ = sing(bpm=120, repeats=1)
     s = Song(x)
-    s.prepare(quiet)
-    return x, s
+    s.make(load_styles()[1], NOP, Settings(modulate=True))
+    assert s.analysis.modulate_at is None
 
 
-def test_phrase_regions(two_phrases):
-    x, s = two_phrases
-    rg = edit.regions(s.analysis, len(x))
-    assert 2 <= len(rg) <= 6
-    assert rg[0]["a"] == 0 and abs(rg[-1]["b"] - len(x) / SR) < 1e-6
-    for r in rg:
-        assert r["a"] <= r["start"] < r["end"] <= r["b"]
-    for r1, r2 in zip(rg, rg[1:]):
-        assert r1["b"] == r2["a"]                                 # המשפטים מכסים את כל ההקלטה ברצף
-        assert r1["end"] <= r1["b"] <= r2["start"]                # החיתוך בתוך ההפסקה
-    half = len(x) / SR / 2                                        # השקט הארוך באמצע הוא גבול בין משפטים
-    assert any(abs(r["b"] - half) < 1.2 for r in rg[:-1])
+def test_manual_note_edits(long_song):
+    s = long_song
+    st = load_styles()[1]
+    s.make(st, NOP, Settings())
+    _, _, _, notes = s.pitch_curves(Settings())
+    base = hz_to_midi(np.maximum(yin(s.tuned)[0], 1))
+    long_notes = [n for n in notes if n[1] - n[0] > 0.4]
+    n1, n2 = long_notes[3], long_notes[6]
+    s.make(st, NOP, Settings(note_edits={n1[4]: 2, n2[4]: "off"}))
+    m = hz_to_midi(np.maximum(yin(s.tuned)[0], 1))
+    i0, i1 = int(n1[0] / 0.01) + 6, int(n1[1] / 0.01) - 6
+    assert abs(np.median((m - base)[i0:i1]) - 2.0) < 0.15       # הצליל שנגרר עלה בשני חצאי טונים
+    j0, j1 = int(n2[0] / 0.01) + 6, int(n2[1] / 0.01) - 6
+    assert np.abs(s.analysis.correction[j0:j1]).max() < 0.05    # הצליל שבוטל - בלי תיקון
+    tg = {n[4]: n for n in s.pitch_curves(Settings())[3]}
+    assert tg[n1[4]][3] == n1[5] + 2 and tg[n2[4]][3] == n2[2]
+    # ההגדרות נשמרות בפרויקט ונטענות
+    from shir_studio.project import settings_to_dict, settings_from_dict
+    import json
+    st2 = settings_from_dict(json.loads(json.dumps(settings_to_dict(Settings(note_edits={n1[4]: 2}, modulate=True)))))
+    assert st2.note_edits == {n1[4]: 2} and st2.modulate is True
 
 
-def test_replace_duplicate_delete_phrase(two_phrases):
-    x, s = two_phrases
-    rg = edit.regions(s.analysis, len(x))
-    take = np.concatenate([np.zeros(SR // 2, np.float32), 0.1 * sing(bpm=120, repeats=1, seed=5)[0][:8 * SR],
-                           np.zeros(SR, np.float32)])
-    r = max(rg[1:], key=lambda q: q["end"] - q["start"])          # משפט ארוך שאינו הראשון
-    y = edit.replace_phrase(x, r, take)
-    assert len(y) == len(x)                                       # האורך נשמר - הקצב לא זז
-    i0, i1 = int(r["a"] * SR), int(r["b"] * SR)
-    assert np.array_equal(y[:i0], x[:i0]) and np.array_equal(y[i1:], x[i1:])   # שאר המשפטים לא נגעו
-    assert not np.allclose(y[i0:i1], x[i0:i1])
-    k = min(6 * SR, int((r["end"] - r["start"]) * SR))
-    seg = lambda z: z[int(r["start"] * SR):int(r["start"] * SR) + k]
-    assert 0.5 < np.sqrt(np.mean(seg(y) ** 2)) / np.sqrt(np.mean(seg(x) ** 2)) < 2   # עוצמה דומה
-    d = edit.duplicate_phrase(x, rg[0])
-    n0 = int(rg[0]["b"] * SR)
-    assert len(d) == len(x) + n0
-    assert np.allclose(d[1000:n0 - 1000], d[n0 + 1000:2 * n0 - 1000])
-    k = edit.delete_phrase(x, rg[0])
-    assert len(k) == len(x) - n0
-    t = edit.trim(take)
-    assert abs(len(t) / SR - 8) < 0.5
+def test_known_grid_is_kept(long_song):
+    """שרו שוב על הליווי: הקצב של השיר הקודם נשאר בדיוק."""
+    a = long_song.analysis
+    grid = (a.auto["beats"], a.auto["tempo"], a.auto["steady"])
+    x, _ = sing(bpm=120, repeats=1, seed=3)
+    s = Song(x, grid=grid)
+    s.make(load_styles()[1], NOP, Settings())
+    assert s.analysis.steady and np.allclose(s.analysis.beats, grid[0]) and s.analysis.tempo == grid[1]
 
 
-# ---------- דף אקורדים ----------
-def test_chord_sheet_data_and_pdf(song, tmp_path):
+def test_medley(tmp_path):
+    from shir_studio.medley import join, make_medley
+    t = np.arange(4 * SR) / SR
+    a = (0.5 * np.sin(2 * np.pi * 440 * t)).astype(np.float32)
+    b = np.stack([0.05 * np.sin(2 * np.pi * 660 * t)] * 2, axis=1).astype(np.float32)
+    out = join([a, b], crossfade=1.0)
+    assert out.ndim == 2 and abs(len(out) / SR - 7.0) < 0.6
+    r = lambda z: np.sqrt(np.mean(z ** 2))
+    assert 0.6 < r(out[:SR]) / r(out[-2 * SR:-SR]) < 1.6          # עוצמה אחידה בין השירים
+    assert np.abs(out).max() <= 0.9
+    mid = out[int(3.2 * SR):int(3.6 * SR), 0]                      # באמצע המעבר שומעים את שני השירים
+    spec = np.abs(np.fft.rfft(mid * np.hanning(len(mid))))
+    fr = np.fft.rfftfreq(len(mid), 1 / SR)
+    assert spec[np.argmin(abs(fr - 440))] > 0.1 * spec.max() and spec[np.argmin(abs(fr - 660))] > 0.1 * spec.max()
+    p1, p2, dst = str(tmp_path / "a.wav"), str(tmp_path / "b.wav"), str(tmp_path / "m.mp3")
+    save(p1, a)
+    save(p2, b)
+    seconds, bad = make_medley([p1, str(tmp_path / "missing.wav"), p2], dst)
+    assert bad == [str(tmp_path / "missing.wav")] and abs(seconds - 7.0) < 2.1
+    assert load_stereo(dst).shape[1] == 2
+    with pytest.raises(AudioError):
+        make_medley([str(tmp_path / "missing.wav")], dst)
+
+
+def test_medley_from_raw_singing(tmp_path):
+    from shir_studio.medley import make_medley
+    x, _ = sing(bpm=120, repeats=1)
+    p = str(tmp_path / "v.wav")
+    save(p, x)
+    seconds, bad = make_medley([p, p], str(tmp_path / "m.wav"), load_styles()[2], Settings(), process=True)
+    assert not bad and seconds > 2 * len(x) / SR - 5
+
+
+def test_chord_sheet(long_song, tmp_path, qapp):
     from shir_studio import chordsheet
-    song.make(style("02_piano"), quiet, Settings(lift=1, transpose=2))
-    data = chordsheet.sheet(song, "ניגון שמחה")
-    bars = [b for _, part in data["parts"] for b in part]
-    assert len(bars) >= 16 and all(1 <= len(b) <= 4 for b in bars)
-    assert data["parts"][-1][0].startswith("פזמון") and "חצי טון" in data["parts"][-1][0]
-    names = {c for b in bars for c in b if c != "%"}
-    assert names and all(c[0] in "ABCDEFG" for c in names)
-    assert theory.key_name((song.analysis.tonic + 2) % 12, song.analysis.mode) in data["info"]
-    txt = chordsheet.as_text(data)
-    assert "ניגון שמחה" in txt and txt.count("|") > 20
-    from PySide6.QtWidgets import QApplication
-    app = QApplication.instance() or QApplication([])      # אותו סוג כמו בבדיקות המסכים
-    p = str(tmp_path / "sheet.pdf")
-    chordsheet.save_pdf(p, data)
-    with open(p, "rb") as f:
-        head = f.read(5)
-    assert head == b"%PDF-" and os.path.getsize(p) > 2000
-    with open(p, "rb") as f:
-        body = f.read()
-    i = body.index(b"/Trapped /False")
-    assert body[i:i + 40].split(b"endobj")[0].strip().endswith(b">>")      # מילון הפרטים נסגר כמו שצריך
+    s = long_song
+    st = load_styles()[1]
+    s.make(st, NOP, Settings())
+    plain = chordsheet.sheet_data(s, "ניגון")
+    bars = [b for _, bs in plain["sections"] for b in bs]
+    assert len(plain["sections"]) == 4 and len(bars) == 32 and "Am" in bars[0]
+    assert "לה מינור" in plain["info"] and "120" in plain["info"]
+    s.make(st, NOP, Settings(modulate=True, transpose=2))
+    d = chordsheet.sheet_data(s, "ניגון")
+    assert "סי מינור" in d["info"]                                   # לה מינור + טון
+    assert d["sections"][0][1][0].startswith("Bm")
+    assert "עליית סולם" in d["sections"][-1][0] and d["sections"][-1][1][0].startswith("Cm")
+    assert "| Bm" in chordsheet.as_text(d)
+    path = str(tmp_path / "דף אקורדים.pdf")
+    chordsheet.write_pdf(path, d)
+    with open(path, "rb") as f:
+        assert f.read(5) == b"%PDF-" and os.path.getsize(path) > 1500
 
 
-def test_chord_names():
-    from shir_studio.chordsheet import chord_name
-    c = analysis.parse_chord("Am7")
-    assert chord_name(c) == "Am7" and chord_name(c, 2) == "Bm7"
-    assert chord_name(analysis.parse_chord("Fmaj7"), 1) == "F#maj7"
+def test_personal_defaults(appdata):
+    from shir_studio import prefs
+    assert prefs.personal_settings(prefs.load()) == Settings()
+    mine = Settings(reverb=150, harmony="three", modulate=True, key=(2, "minor"), chords_text="Am", transpose=3)
+    prefs.store_personal(prefs.load(), mine, "02_piano", "wav", True)
+    p = prefs.load()
+    st = prefs.personal_settings(p)
+    assert (st.reverb, st.harmony, st.modulate) == (150, "three", True)
+    assert st.key is None and st.chords_text == "" and st.transpose == 0     # מה ששייך לשיר אחד לא נשמר
+    assert (p["style"], p["fmt"], p["extras"]) == ("02_piano", "wav", True)
+    with open(os.path.join(str(appdata), "ShirStudio", "prefs.json"), "w") as f:
+        f.write("{ broken")
+    assert prefs.personal_settings(prefs.load()) == Settings()               # קובץ פגום לא מפיל את התוכנה
 
 
-# ---------- עדכון וזמן שנשאר ----------
+def test_recovery(appdata):
+    from shir_studio import recovery
+    assert recovery.pending() is None
+    x, _ = sing(bpm=120, repeats=1)
+    rec = devices.Recorder()
+    bk = recovery.RecordingBackup()
+    for i in range(0, len(x), 4410):
+        rec._chunks.append(x[i:i + 4410])
+        if i % 44100 == 0:
+            bk.write(rec.drain())
+    bk.write(rec.drain())
+    assert rec.drain() == []
+    bk.close()                                                   # התוכנה 'נסגרה' באמצע ההקלטה
+    kind, data = recovery.pending()
+    assert kind == "recording" and len(data) == len(x) and np.abs(data - x).max() < 1e-3
+    bk.discard()
+    assert recovery.pending() is None
+    recovery.save_session(x, {"style": "02_piano", "key_index": 1, "settings": {"reverb": 120}})
+    kind, raw, meta = recovery.pending()
+    assert kind == "session" and np.array_equal(raw, x) and meta["key_index"] == 1
+    recovery.save_session(None, {"style": "03_guitar"}, raw_changed=False)   # רק ההגדרות השתנו
+    assert recovery.pending()[2]["style"] == "03_guitar" and len(recovery.pending()[1]) == len(x)
+    recovery.clear()
+    assert recovery.pending() is None
+
+
 def test_update_check():
     from shir_studio import update
-    assert update.parse_version("גרסה 1.0.42") == (1, 0, 42)
-    ok = lambda url, timeout: '{"name": "גרסה 1.0.42", "tag_name": "latest"}'
-    assert update.check("1.0.7", fetch=ok)[:2] == ("newer", "1.0.42")
-    assert update.check("1.0.42", fetch=ok)[0] == "latest"
-    assert update.check("1.0.100", fetch=ok)[0] == "latest"          # השוואת מספרים, לא טקסט
+    assert update.parse("גרסה 1.0.57") == (1, 0, 57) and update.parse("latest") is None
+    assert update.newer("1.0.57", "1.0.9") and not update.newer("1.0.9", "1.0.9") and not update.newer("x", "1.0.0")
+    assert update.latest_version(lambda t: {"name": "גרסה 1.0.57", "tag_name": "latest"}) == "1.0.57"
 
-    def offline(url, timeout):
-        raise OSError("no network")
-    assert update.check("1.0.7", fetch=offline)[0] == "error"
-    assert update.check("1.0.7", fetch=lambda u, t: "{}")[0] == "error"
-    assert update.check("1.0.7", fetch=ok)[2].startswith("https://github.com/")
+    def offline(timeout):
+        raise OSError("אין אינטרנט")
+    assert update.latest_version(offline) is None
 
 
-def test_long_phrase_is_split_at_a_breath():
-    from shir_studio.music.analysis import Note, voice_phrases
-
-    class A:
-        notes = ([Note(i * 0.5, i * 0.5 + 0.46, 60) for i in range(20)]            # 10 שניות רצופות
-                 + [Note(10.2 + i * 0.5, 10.66 + i * 0.5, 62) for i in range(20)])  # נשימה קצרה, ועוד 10 שניות
-    ph = voice_phrases(A)
-    assert len(ph) == 2 and abs(ph[0][1] - 9.96) < 1e-6 and abs(ph[1][0] - 10.2) < 1e-6
-    A.notes = A.notes[:20]
-    assert len(voice_phrases(A)) == 1
+def test_overdub_is_aligned_to_playback(fake_sd):
+    """משמיעים ומקליטים יחד: ההקלטה שחוזרת מתחילה בדיוק בתחילת ההשמעה (אחרי פיצוי האיחור)."""
+    backing = np.zeros(SR, np.float32)
+    backing[1000] = 1.0
+    od = devices.Overdub(backing)
+    od.start()
+    stream = fake_sd.streams[-1]
+    lat = int(round(sum(stream.latency) * SR))
+    played = []
+    mic = np.zeros(2 * SR, np.float32)
+    mic[1000 + lat] = 1.0                       # הזמר 'עונה' בדיוק על הנקישה, והיא חוזרת באיחור של כרטיס הקול
+    for i in range(0, 2 * SR, 512):
+        out = np.zeros((512, 2), np.float32)
+        stream.callback(mic[i:i + 512].reshape(-1, 1), out, 512, None, None)
+        played.append(out.copy())
+    rec = od.stop()
+    played = np.concatenate(played)
+    assert int(np.argmax(played[:, 0])) == 1000 and played[SR + 10:].max() == 0   # אחרי הליווי - שקט
+    assert abs(int(np.argmax(rec)) - 1000) <= 1
+    assert od.position() >= 2.0 - 0.02

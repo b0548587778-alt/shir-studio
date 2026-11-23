@@ -52,7 +52,6 @@ class AdvancedDialog(QDialog):
         self.setStyleSheet(CSS)
         self.resize(720, 760)
         self.info = info
-        self._orig = settings
         outer = QVBoxLayout(self)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -139,7 +138,7 @@ class AdvancedDialog(QDialog):
         self.bpm = QSpinBox()
         self.bpm.setRange(40, 220)
         self.bpm.setSuffix(" BPM")
-        self.bpm.setValue(int(settings.bpm or (info["tempo"] if info else 110)))
+        self.bpm.setValue(int(round(settings.bpm or (info["tempo"] if info else 110))))
         {"auto": self.t_auto, "manual": self.t_manual, "free": self.t_free}[settings.tempo_mode].setChecked(True)
         th.addWidget(self.t_auto); th.addWidget(self.t_manual); th.addWidget(self.bpm); th.addWidget(self.t_free)
         th.addStretch()
@@ -156,16 +155,13 @@ class AdvancedDialog(QDialog):
         self.cpb.addItem("אחד בתיבה", 1)
         self.cpb.setCurrentIndex(0 if settings.chords_per_bar == 2 else 1)
         f.addRow("החלפת אקורדים:", self.cpb)
-        self.lift = QComboBox()
-        self.lift.addItem("בלי", 0)
-        self.lift.addItem("חצי טון למעלה", 1)
-        self.lift.addItem("טון שלם למעלה", 2)
-        self.lift.setCurrentIndex(max(0, self.lift.findData(int(settings.lift or 0))))
-        f.addRow("עלייה בפזמון האחרון:", self.lift)
         self.accomp_db = _slider(-12, 9, settings.accomp_db, _db)
         self.reverb = _slider(0, 200, settings.reverb, lambda x: f"{x}%")
         f.addRow("עוצמת הליווי:", self.accomp_db)
         f.addRow("הדהוד (ריוורב):", self.reverb)
+        self.modulate = QCheckBox("עליית סולם (חצי טון) בפזמון האחרון - הקול והליווי עולים יחד")
+        self.modulate.setChecked(bool(settings.modulate))
+        f.addRow("", self.modulate)
         v.addWidget(g)
 
         # ---- כלים
@@ -258,9 +254,13 @@ class AdvancedDialog(QDialog):
         ok.clicked.connect(self.accept)
         reset = QPushButton("החזר הכול לרגיל")
         reset.clicked.connect(self.reset)
+        mine = QPushButton("⭐  שמור כטעם שלי")
+        mine.setToolTip("העוצמות, הניקוי, ההדהוד, הקול השני, הכלים וסוג הקובץ יהיו ברירת המחדל בכל שיר חדש")
+        mine.clicked.connect(lambda: self.done(3))
         cancel = QPushButton("ביטול")
         cancel.clicked.connect(self.reject)
-        row.addWidget(ok, 2); row.addWidget(reset, 1); row.addWidget(cancel, 1)
+        row.addWidget(ok, 2); row.addWidget(mine, 2); row.addWidget(reset, 1); row.addWidget(cancel, 1)
+        self._orig = settings
         outer.addLayout(row)
 
     def reset(self):
@@ -281,11 +281,13 @@ class AdvancedDialog(QDialog):
 
     def settings(self) -> Settings:
         mode = "auto" if self.t_auto.isChecked() else ("manual" if self.t_manual.isChecked() else "free")
-        return replace(
-            self._orig,                                 # שומר על מה שלא נערך כאן (תיקונים ידניים של צלילים)
-            lift=self.lift.currentData(),
+        o = self._orig
+        # קצב שנקבע במדויק (למשל 117.4) לא מתעגל סתם כשלא נגעו בו
+        bpm = o.bpm if (o.bpm and self.bpm.value() == int(round(o.bpm))) else self.bpm.value()
+        return Settings(
             denoise=self.denoise.slider.value(), tune=self.tune.slider.value(),
-            key=self._key(), tempo_mode=mode, bpm=self.bpm.value(),
+            key=self._key(), tempo_mode=mode, bpm=bpm,
+            modulate=self.modulate.isChecked(), note_edits=o.note_edits,
             meter=self.meter.currentData(), chords_per_bar=self.cpb.currentData(),
             chords_text=self.chords.toPlainText().strip(), transpose=self.transpose.value(),
             voice_db=self.voice_db.slider.value(), accomp_db=self.accomp_db.slider.value(),

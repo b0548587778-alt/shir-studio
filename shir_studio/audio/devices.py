@@ -16,7 +16,20 @@ class Recorder:
     def __init__(self):
         self._chunks = []
         self._stream = None
+        self._drained = 0
         self.level = 0.0
+
+    def reset(self):
+        """מתחילים את ההקלטה מחדש מהרגע הזה (אחרי הספירה לאחור)."""
+        self._chunks = []
+        self._drained = 0
+
+    def drain(self):
+        """החלקים שהוקלטו מאז הקריאה הקודמת - לגיבוי שוטף לדיסק."""
+        chunks = self._chunks
+        new = chunks[self._drained:len(chunks)]
+        self._drained += len(new)
+        return new
 
     def start(self):
         sd = _sd()
@@ -46,6 +59,66 @@ class Recorder:
         if not self._chunks:
             return np.zeros(0, dtype=np.float32)
         return np.concatenate(self._chunks).astype(np.float32)
+
+
+class Overdub:
+    """משמיע (ליווי, או את מה שלפני המשפט) ומקליט באותו זמן - שני הכיוונים מסונכרנים.
+    ההקלטה שחוזרת מיושרת לתחילת ההשמעה."""
+
+    def __init__(self, backing):
+        b = np.asarray(backing, dtype=np.float32)
+        self.backing = b if b.ndim == 2 else np.stack([b, b], axis=1)
+        self._chunks = []
+        self._stream = None
+        self._pos = 0
+        self._latency = 0.0
+        self.level = 0.0
+
+    def reset(self):
+        pass                                   # כאן הכול נשמר - החיתוך נעשה לפי הזמן
+
+    def drain(self):
+        return []
+
+    def position(self):
+        return self._pos / SR
+
+    def start(self):
+        sd = _sd()
+        b = self.backing
+
+        def cb(indata, outdata, frames, t, status):
+            k = max(0, min(frames, len(b) - self._pos))
+            outdata[:k] = b[self._pos:self._pos + k]
+            outdata[k:] = 0
+            self._pos += frames
+            mono = indata[:, 0].copy()
+            self._chunks.append(mono)
+            self.level = float(np.sqrt(np.mean(mono ** 2)))
+
+        try:
+            self._stream = sd.Stream(samplerate=SR, channels=(1, 2), dtype="float32", callback=cb)
+            lat = self._stream.latency
+            self._latency = float(sum(lat)) if isinstance(lat, (tuple, list)) else float(lat)
+            self._stream.start()
+        except Exception:
+            self._stream = None
+            raise AudioError("לא הצלחתי להשמיע ולהקליט באותו זמן.\n"
+                             "בדוק שהמיקרופון והאוזניות מחוברים, ונסה שוב.")
+
+    def stop(self) -> np.ndarray:
+        if self._stream:
+            try:
+                self._stream.stop()
+                self._stream.close()
+            except Exception:
+                pass
+            self._stream = None
+        if not self._chunks:
+            return np.zeros(0, dtype=np.float32)
+        rec = np.concatenate(self._chunks).astype(np.float32)
+        # מה שנשמע באוזניות מגיע למיקרופון באיחור קטן (של כרטיס הקול) - מפצים עליו
+        return rec[int(min(max(self._latency, 0.0), 0.5) * SR):]
 
 
 class Player:

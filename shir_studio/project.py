@@ -24,6 +24,8 @@ def settings_from_dict(d):
     d = {k: v for k, v in (d or {}).items() if k in names}
     if d.get("key"):
         d["key"] = (int(d["key"][0]), str(d["key"][1]))
+    if d.get("note_edits"):
+        d["note_edits"] = {str(k): v for k, v in d["note_edits"].items()}
     return Settings(**d)
 
 
@@ -99,7 +101,7 @@ def batch(paths, style, settings, out_folder, fmt="mp3", progress=None, load=Non
                          f"שיר {i + 1} מתוך {n}: {os.path.basename(p)}")
         try:
             song = Song(load(p))
-            out = song.make(style, rep, dataclasses.replace(settings, key=None, chords_text="", sections=None, note_fixes=None))
+            out = song.make(style, rep, dataclasses.replace(settings, key=None, chords_text=""))
             base = os.path.splitext(os.path.basename(p))[0]
             dst = os.path.join(out_folder, f"{base} - {style.get('name', 'שיר')}.{fmt}")
             save(dst, out)

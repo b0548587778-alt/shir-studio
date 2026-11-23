@@ -8,6 +8,7 @@ from .theory import chords_for, scale_pcs
 BASS = {"bass", "acoustic_bass"}
 LEAD_PREF = ("violin", "clarinet", "flute", "trumpet", "accordion", "guitar", "piano")
 PHRASE = 8            # תיבות במשפט
+MOD_UP = 1            # עליית סולם בפזמון האחרון: חצי טון
 
 
 def _note_for(spec, chord, octave):
@@ -89,18 +90,27 @@ def phrase_times(a, tl, last_voice):
     return [(max(0.0, t0 + p * PHRASE * bar_sec), t0 + (p + 1) * PHRASE * bar_sec) for p in range(n)]
 
 
-def lift_time(a):
-    """תחילת המשפט האחרון (בזמן השירה) - שם עולים טון. None = השיר קצר מדי או בקצב חופשי."""
+def modulation(a):
+    """עליית סולם בפזמון האחרון: (מתי הליווי עולה, מתי הקול עולה) בזמן השירה, או None.
+    הליווי עולה בתחילת המשפט האחרון; הקול - בהפסקה שלפני הצליל הראשון של אותו משפט."""
     if not a.steady or not a.notes:
         return None
     tl = Timeline(a)
-    last = max(nt.end for nt in a.notes)
-    times = phrase_times(a, tl, last)
+    last_voice = max(nt.end for nt in a.notes)
+    times = phrase_times(a, tl, last_voice)
     bar_sec = tl.period * tl.meter
-    # 'משפט אחרון' של תיבה או שתיים (זנב של השיר) אינו פזמון - עולים כבר במשפט שלפניו
-    while len(times) >= 2 and last - times[-1][0] < 4 * bar_sec:
-        times = times[:-1]
-    return float(times[-1][0]) if len(times) >= 2 else None
+    k = len(times) - 1
+    if k >= 1 and last_voice - times[k][0] < 2 * bar_sec:      # משפט אחרון קצרצר - עולים משפט קודם
+        k -= 1
+    if k < 2:
+        return None                                            # שיר קצר מדי לעלייה
+    t_acc = times[k][0]
+    new = [nt for nt in a.notes if nt.start >= t_acc - 0.6 * tl.period]
+    if not new:
+        return None
+    before = [nt.end for nt in a.notes if nt.start < new[0].start]
+    prev_end = max(before) if before else 0.0
+    return t_acc, max((prev_end + new[0].start) / 2, new[0].start - 0.25)
 
 
 def to_compound(events):
@@ -280,9 +290,6 @@ def render(a, style, progress=None, rng_seed=7):
     IB = tl.intro_bars
     meter = tl.meter
     tp = getattr(a, "transpose", 0)
-    key_up = getattr(a, "lift", 0) or 0
-    lift_t = getattr(a, "lift_t", None)
-    lift_at = (lift_t + tl.lead) if (key_up and lift_t is not None and a.steady) else None
     compound = bool(getattr(a, "compound", False))
     sub = 3 if compound else 2                       # חלוקת הפעמה
     tonic_chord = chords_for(a.tonic, a.mode)[0]
@@ -344,9 +351,11 @@ def render(a, style, progress=None, rng_seed=7):
         p = phrase_bar // PHRASE
         return levels[p] if p < len(levels) else 1
 
+    mod_t = getattr(a, "modulate_at", None)
+
     def play(out, inst, m, d, v, t):
-        m += tp + (key_up if lift_at is not None and t >= lift_at - 0.05 else 0)   # עליית טון בפזמון האחרון
-        out.add(synth.render_note(inst, m, d, v, tun), t, (m, d, v))
+        up = tp + (MOD_UP if mod_t is not None and t - tl.lead >= mod_t - 0.03 else 0)
+        out.add(synth.render_note(inst, m + up, d, v, tun), t, (m + up, d, v))
 
     for ti, tr in enumerate(specs):
         out = _Track(n)

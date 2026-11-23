@@ -1,35 +1,38 @@
-"""בדיקה אם יש גרסה חדשה של התוכנה. רצה רק כשהמשתמש לוחץ על הכפתור - התוכנה עצמה עובדת בלי אינטרנט.
-הבדיקה רק קוראת את מספר הגרסה האחרונה; שום מידע על המשתמש או על השירים לא נשלח."""
+"""בדיקה אם יש גרסה חדשה. רצה רק כשהמשתמש לוחץ על הכפתור - התוכנה עצמה עובדת בלי אינטרנט."""
 import json
 import re
+import urllib.request
 
-from . import APP_VERSION
-
-LATEST = "https://api.github.com/repos/b0548587778-alt/shir-studio/releases/latest"
+API = "https://api.github.com/repos/b0548587778-alt/shir-studio/releases/latest"
 PAGE = "https://github.com/b0548587778-alt/shir-studio/releases/latest"
 
 
-def parse_version(text):
-    m = re.search(r"(\d+)\.(\d+)\.(\d+)", text or "")
-    return tuple(int(x) for x in m.groups()) if m else None
+def parse(text):
+    """'גרסה 1.0.57' -> (1, 0, 57). אין מספר גרסה -> None."""
+    m = re.search(r"\d+(?:\.\d+)+", text or "")
+    return tuple(int(x) for x in m.group(0).split(".")) if m else None
 
 
-def _fetch(url, timeout):
-    from urllib.request import Request, urlopen
-    req = Request(url, headers={"Accept": "application/vnd.github+json", "User-Agent": "ShirStudio"})
-    with urlopen(req, timeout=timeout) as r:
-        return r.read().decode("utf-8")
+def newer(latest, current):
+    a, b = parse(latest), parse(current)
+    return bool(a and b and a > b)
 
 
-def check(current=APP_VERSION, timeout=8, fetch=None):
-    """מחזיר (מצב, גרסה, קישור): 'newer' = יש גרסה חדשה, 'latest' = הגרסה מעודכנת, 'error' = לא הצלחתי לבדוק."""
+def _fetch(timeout):
+    req = urllib.request.Request(API, headers={"User-Agent": "ShirStudio",
+                                               "Accept": "application/vnd.github+json"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+def latest_version(fetch=None, timeout=8):
+    """מספר הגרסה האחרונה שפורסמה ('1.0.57'), או None אם אי אפשר לדעת."""
     try:
-        data = json.loads((fetch or _fetch)(LATEST, timeout))
-        latest = parse_version(data.get("name")) or parse_version(data.get("tag_name"))
+        d = (fetch or _fetch)(timeout)
     except Exception:
-        return "error", None, PAGE
-    mine = parse_version(current)
-    if latest is None or mine is None:
-        return "error", None, PAGE
-    text = ".".join(str(x) for x in latest)
-    return ("newer" if latest > mine else "latest"), text, PAGE
+        return None
+    for field in ("name", "body", "tag_name"):
+        v = parse(d.get(field) or "")
+        if v:
+            return ".".join(str(x) for x in v)
+    return None
