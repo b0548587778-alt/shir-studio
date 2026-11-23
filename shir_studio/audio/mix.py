@@ -238,7 +238,16 @@ def mix(voice, tracks, lead, style, accomp_db=0.0, voice_db=0.0, reverb=1.0, ste
     """voice: מונו מעובד. tracks: [(spec, buf)]. lead: שניות מבוא לפני השירה."""
     n = max(len(t[1]) for t in tracks) if tracks else len(voice) + int(lead * SR)
     n = max(n, len(voice) + int(lead * SR) + SR)
-    v = process_voice(voice.astype(np.float32))
+    voices = harmony if isinstance(harmony, (list, tuple)) else ([harmony] if harmony is not None else [])
+    # הקול הראשי והקולות הנוספים מעובדים במקביל (כל אחד בליבה אחרת של המעבד) - אותה תוצאה, פחות המתנה
+    todo = [voice.astype(np.float32)] + [hv.astype(np.float32) for hv in voices]
+    if len(todo) > 1:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=len(todo)) as pool:
+            done = list(pool.map(process_voice, todo))
+    else:
+        done = [process_voice(todo[0])]
+    v = done[0]
     vbuf = np.zeros(n, np.float32)
     s = int(lead * SR)
     vbuf[s:s + len(v)] = v * 10 ** (voice_db / 20)
@@ -284,10 +293,8 @@ def mix(voice, tracks, lead, style, accomp_db=0.0, voice_db=0.0, reverb=1.0, ste
         acc *= duck[:, None]
     rv = style.get("reverb", 0.2) * reverb
     vst = (np.stack([vbuf, vbuf], axis=1) * 0.707).astype(np.float32)
-    voices = harmony if isinstance(harmony, (list, tuple)) else ([harmony] if harmony is not None else [])
     pans = (0.35, -0.35)
-    for hi, hv in enumerate(voices):
-        h = process_voice(hv.astype(np.float32))
+    for hi, h in enumerate(done[1:]):
         h *= 10 ** (-6 / 20) * (vr / max(rms(h[np.abs(h) > 0.02]) if np.any(np.abs(h) > 0.02) else 1, 1e-9))
         h *= 10 ** (voice_db / 20)
         hb = np.zeros(n, np.float32)

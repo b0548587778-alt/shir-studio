@@ -99,7 +99,7 @@ def batch(paths, style, settings, out_folder, fmt="mp3", progress=None, load=Non
                          f"שיר {i + 1} מתוך {n}: {os.path.basename(p)}")
         try:
             song = Song(load(p))
-            out = song.make(style, rep, dataclasses.replace(settings, key=None, chords_text=""))
+            out = song.make(style, rep, dataclasses.replace(settings, key=None, chords_text="", sections=None, note_fixes=None))
             base = os.path.splitext(os.path.basename(p))[0]
             dst = os.path.join(out_folder, f"{base} - {style.get('name', 'שיר')}.{fmt}")
             save(dst, out)

@@ -1,4 +1,6 @@
 """שינוי גובה צליל בשיטת TD-PSOLA - שומר על צבע הקול הטבעי. מימוש עצמי."""
+from functools import lru_cache
+
 import numpy as np
 from scipy.signal import butter, sosfiltfilt
 
@@ -6,6 +8,14 @@ from .fileio import SR
 from .pitch import FRAME_SEC
 
 UNVOICED_P = int(0.005 * SR)
+
+
+@lru_cache(maxsize=4096)
+def _hann(L):
+    """חלון לכל אורך מחזור - מחושב פעם אחת (אותו אורך חוזר אלפי פעמים בשיר)."""
+    w = np.hanning(L)
+    w.setflags(write=False)
+    return w
 
 
 def _per_sample(track, n):
@@ -68,7 +78,7 @@ def shift(x: np.ndarray, f0: np.ndarray, semitones: np.ndarray) -> np.ndarray:
         seg = np.zeros(L)
         s0, s1 = max(0, lo), min(n, lo + L)
         seg[s0 - lo:s1 - lo] = x[s0:s1]
-        w = np.hanning(L)
+        w = _hann(L)
         o = si - Pi
         d0, d1 = max(0, o), min(len(out), o + L)
         out[d0:d1] += (seg * w)[d0 - o:d1 - o]

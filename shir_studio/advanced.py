@@ -52,6 +52,7 @@ class AdvancedDialog(QDialog):
         self.setStyleSheet(CSS)
         self.resize(720, 760)
         self.info = info
+        self._orig = settings
         outer = QVBoxLayout(self)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -81,6 +82,27 @@ class AdvancedDialog(QDialog):
         f.addRow("תיקון זיופים:", self.tune)
         f.addRow("עוצמת הקול:", self.voice_db)
         f.addRow("העברת סולם (טרנספוזיציה):", self.transpose)
+        voice = (info or {}).get("voice")
+        if voice:
+            sug = voice["suggest"]
+            vw = QWidget()
+            vh = QHBoxLayout(vw)
+            vh.setContentsMargins(0, 0, 0, 0)
+            txt = f"המנעד שלך בשיר: מ{voice['low']} עד {voice['high']}. "
+            if sug:
+                way = "העלאה" if sug > 0 else "הורדה"
+                txt += f"מומלץ: {way} של \u2066{abs(sug)}\u2069 חצאי טונים, לגובה נוח יותר."
+            else:
+                txt += "השיר בגובה נוח."
+            lab = QLabel(txt)
+            lab.setObjectName("small")
+            lab.setWordWrap(True)
+            vh.addWidget(lab, 1)
+            if sug:
+                b = QPushButton("החל המלצה")
+                b.clicked.connect(lambda: self.transpose.setValue(sug))
+                vh.addWidget(b)
+            f.addRow("", vw)
         self.harmony = QComboBox()
         for label, val in (("בלי", "off"), ("אוטומטי", "auto"), ("מעל המנגינה", "above"),
                            ("מתחת למנגינה", "below"), ("שלושה קולות (מעל ומתחת)", "three")):
@@ -126,13 +148,20 @@ class AdvancedDialog(QDialog):
         self.meter = QComboBox()
         self.meter.addItem("4/4 (רגיל)", 4)
         self.meter.addItem("3/4 (ואלס)", 3)
-        self.meter.setCurrentIndex(0 if settings.meter == 4 else 1)
+        self.meter.addItem("6/8 (מתנדנד)", 6)
+        self.meter.setCurrentIndex(max(0, self.meter.findData(settings.meter)))
         f.addRow("משקל:", self.meter)
         self.cpb = QComboBox()
         self.cpb.addItem("שניים בתיבה", 2)
         self.cpb.addItem("אחד בתיבה", 1)
         self.cpb.setCurrentIndex(0 if settings.chords_per_bar == 2 else 1)
         f.addRow("החלפת אקורדים:", self.cpb)
+        self.lift = QComboBox()
+        self.lift.addItem("בלי", 0)
+        self.lift.addItem("חצי טון למעלה", 1)
+        self.lift.addItem("טון שלם למעלה", 2)
+        self.lift.setCurrentIndex(max(0, self.lift.findData(int(settings.lift or 0))))
+        f.addRow("עלייה בפזמון האחרון:", self.lift)
         self.accomp_db = _slider(-12, 9, settings.accomp_db, _db)
         self.reverb = _slider(0, 200, settings.reverb, lambda x: f"{x}%")
         f.addRow("עוצמת הליווי:", self.accomp_db)
@@ -252,7 +281,9 @@ class AdvancedDialog(QDialog):
 
     def settings(self) -> Settings:
         mode = "auto" if self.t_auto.isChecked() else ("manual" if self.t_manual.isChecked() else "free")
-        return Settings(
+        return replace(
+            self._orig,                                 # שומר על מה שלא נערך כאן (תיקונים ידניים של צלילים)
+            lift=self.lift.currentData(),
             denoise=self.denoise.slider.value(), tune=self.tune.slider.value(),
             key=self._key(), tempo_mode=mode, bpm=self.bpm.value(),
             meter=self.meter.currentData(), chords_per_bar=self.cpb.currentData(),

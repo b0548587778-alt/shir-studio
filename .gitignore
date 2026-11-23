@@ -10,3 +10,4 @@ dist/
 *.key
 *.jks
 *.keystore
+shir_studio/_version.py

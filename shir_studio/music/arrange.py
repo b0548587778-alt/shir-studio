@@ -89,6 +89,36 @@ def phrase_times(a, tl, last_voice):
     return [(max(0.0, t0 + p * PHRASE * bar_sec), t0 + (p + 1) * PHRASE * bar_sec) for p in range(n)]
 
 
+def lift_time(a):
+    """תחילת המשפט האחרון (בזמן השירה) - שם עולים טון. None = השיר קצר מדי או בקצב חופשי."""
+    if not a.steady or not a.notes:
+        return None
+    tl = Timeline(a)
+    last = max(nt.end for nt in a.notes)
+    times = phrase_times(a, tl, last)
+    bar_sec = tl.period * tl.meter
+    # 'משפט אחרון' של תיבה או שתיים (זנב של השיר) אינו פזמון - עולים כבר במשפט שלפניו
+    while len(times) >= 2 and last - times[-1][0] < 4 * bar_sec:
+        times = times[:-1]
+    return float(times[-1][0]) if len(times) >= 2 else None
+
+
+def to_compound(events):
+    """הופך תבנית של 4/4 לתבנית של 6/8: כל חצי תיבה (2 פעמות) הופך לפעמה אחת שמתחלקת לשלוש.
+    הפעמה הראשונה נשארת, הפעמה השנייה עוברת לשליש השני, וה'אוף-ביט' שאחריה לשליש השלישי."""
+    out = []
+    for ev in events:
+        p, u = divmod(float(ev["t"]), 2.0)
+        if p > 1 or (0 < u < 1):
+            continue
+        t = p + (0.0 if u == 0 else (1 / 3 if u < 1.5 else 2 / 3))
+        e = dict(ev, t=t)
+        if isinstance(ev.get("d"), (int, float)):
+            e["d"] = max(0.3, ev["d"] / 2) if ev["d"] >= 2 else min(ev["d"], 0.33)
+        out.append(e)
+    return out
+
+
 def snap_melody(a, notes):
     scale = set(scale_pcs(a.tonic, a.mode))
     out = []
@@ -250,6 +280,11 @@ def render(a, style, progress=None, rng_seed=7):
     IB = tl.intro_bars
     meter = tl.meter
     tp = getattr(a, "transpose", 0)
+    key_up = getattr(a, "lift", 0) or 0
+    lift_t = getattr(a, "lift_t", None)
+    lift_at = (lift_t + tl.lead) if (key_up and lift_t is not None and a.steady) else None
+    compound = bool(getattr(a, "compound", False))
+    sub = 3 if compound else 2                       # חלוקת הפעמה
     tonic_chord = chords_for(a.tonic, a.mode)[0]
     rich = style.get("rich_chords", False)
     total = tl.lead + a.duration + 8.0
@@ -310,7 +345,8 @@ def render(a, style, progress=None, rng_seed=7):
         return levels[p] if p < len(levels) else 1
 
     def play(out, inst, m, d, v, t):
-        out.add(synth.render_note(inst, m + tp, d, v, tun), t, (m + tp, d, v))
+        m += tp + (key_up if lift_at is not None and t >= lift_at - 0.05 else 0)   # עליית טון בפזמון האחרון
+        out.add(synth.render_note(inst, m, d, v, tun), t, (m, d, v))
 
     for ti, tr in enumerate(specs):
         out = _Track(n)
@@ -319,7 +355,8 @@ def render(a, style, progress=None, rng_seed=7):
         prev_voicing = None
         layer = tr.get("enter", 0) >= 8          # כלי 'שכבה' - מנגן רק בפזמונים
         if a.steady:
-            bar_events = [ev for ev in tr["bar"] if ev["t"] < meter]
+            bar_events = to_compound(tr["bar"]) if compound else [ev for ev in tr["bar"] if ev["t"] < meter]
+            fill_events = to_compound(tr["fill"]) if (compound and tr.get("fill")) else tr.get("fill")
             nb = len(tl.beats)
             bar = 0
             while True:
@@ -359,23 +396,25 @@ def render(a, style, progress=None, rng_seed=7):
                 end_of_phrase = bar == IB - 1 or (bar >= IB and phrase_bar % PHRASE == PHRASE - 1)
                 next_lvl = level_at(phrase_bar + 1)
                 if inst == "drums" and end_of_phrase and tr.get("fill"):
-                    f0 = min(e["t"] for e in tr["fill"])
-                    fill = tr["fill"]
+                    fill = fill_events or [{"t": meter - 1, "n": "snare", "v": 0.6}]
+                    f0 = min(e["t"] for e in fill)
                     if next_lvl > lvl and synth.has_drum("tom_hi"):
                         # כניסה לפזמון: מילוי טומים שיורד מגבוה לנמוך
                         fill = [{"t": meter - 1, "n": "tom_hi", "v": 0.75},
-                                {"t": meter - 0.5, "n": "tom_hi", "v": 0.7},
-                                {"t": meter - 0.25, "n": "tom_low", "v": 0.85}]
+                                {"t": meter - 1 + 1 / sub, "n": "tom_hi", "v": 0.7},
+                                {"t": meter - 1 + (2 / 3 if compound else 0.75), "n": "tom_low", "v": 0.85}]
                         f0 = meter - 1
                     elif synth.has_drum("tom_hi") and phrase_bar >= 0:
                         # מילויים מתחלפים - כל משפט נגמר קצת אחרת
                         k = (phrase_bar // PHRASE) % 3
                         if k == 1:
-                            fill = [{"t": meter - 1 + j / 4, "n": "snare", "v": 0.45 + 0.12 * j} for j in range(4)]
+                            fill = [{"t": meter - 1 + j / (3 if compound else 4), "n": "snare",
+                                     "v": 0.45 + 0.12 * j} for j in range(3 if compound else 4)]
                             f0 = meter - 1
                         elif k == 2:
-                            fill = [{"t": meter - 1, "n": "snare", "v": 0.7}, {"t": meter - 0.5, "n": "tom_hi", "v": 0.7},
-                                    {"t": meter - 0.25, "n": "tom_low", "v": 0.8}]
+                            fill = [{"t": meter - 1, "n": "snare", "v": 0.7},
+                                    {"t": meter - 1 + 1 / sub, "n": "tom_hi", "v": 0.7},
+                                    {"t": meter - 1 + (2 / 3 if compound else 0.75), "n": "tom_low", "v": 0.8}]
                             f0 = meter - 1
                     evs = [e for e in bar_events if e["t"] < f0] + [e for e in fill if e["t"] < meter]
                 new_phrase = bar >= IB and phrase_bar % PHRASE == 0
@@ -386,8 +425,8 @@ def render(a, style, progress=None, rng_seed=7):
                 if inst == "drums" and last_phrase and not in_outro:
                     # פזמון אחרון: יותר אנרגיה - מצילה סגורה בשמיניות
                     have = {(e["t"], e["n"]) for e in evs}
-                    evs = evs + [{"t": k / 2, "n": "hat", "v": 0.35 + 0.1 * (k % 2 == 0)}
-                                 for k in range(2 * meter) if (k / 2, "hat") not in have]
+                    evs = evs + [{"t": k / sub, "n": "hat", "v": 0.35 + 0.1 * (k % sub == 0)}
+                                 for k in range(sub * meter) if (k / sub, "hat") not in have]
                 if inst == "drums" and lvl == 0 and bar >= IB:
                     # בבית: בלי מצילות פתוחות וטמבורין - נשמע רגוע יותר
                     evs = [e for e in evs if e["n"] not in ("open_hat", "tambourine", "crash")]

@@ -20,6 +20,7 @@ from .music.styles import load_styles
 from .log import log_error
 from .project import save_project, load_project, settings_to_dict, settings_from_dict, History, batch, EXT
 from .pitchview import PitchDialog
+from .phrases import PhraseDialog
 
 STYLE = """
 QWidget { font-family: 'Segoe UI', 'Arial'; font-size: 20px; color: #1d2733; background: #f6f3ec; }
@@ -65,6 +66,19 @@ def label(text, name=None):
     if name:
         l.setObjectName(name)
     return l
+
+
+def eta_text(elapsed, percent):
+    """הערכת הזמן שנשאר, לפי הקצב עד עכשיו."""
+    if percent < 8 or percent >= 100 or elapsed < 3:
+        return ""
+    left = elapsed * (100 - percent) / percent
+    if left < 8:
+        return "עוד רגע..."
+    if left < 50:
+        return f"נשארו בערך {int(round(left / 5) * 5)} שניות"
+    m = int(round(left / 60))
+    return "נשארה בערך דקה" if m <= 1 else f"נשארו בערך {m} דקות"
 
 
 class Worker(QThread):
@@ -168,6 +182,12 @@ class MainWindow(QMainWindow):
         b4.clicked.connect(self.batch_process)
         h2.addWidget(b3); h2.addWidget(b4)
         v.addLayout(h2)
+        self.b_update = QPushButton("בדוק אם יש גרסה חדשה")
+        self.b_update.setCursor(Qt.PointingHandCursor)
+        self.b_update.setStyleSheet("background: transparent; color: #24466b; font-size: 16px; font-weight: normal;"
+                                    " text-decoration: underline; min-height: 24px; padding: 2px;")
+        self.b_update.clicked.connect(self.check_update)
+        v.addWidget(self.b_update, 0, Qt.AlignCenter)
         return w
 
     def _build_record(self):
@@ -260,11 +280,15 @@ class MainWindow(QMainWindow):
         self.bar.setRange(0, 100)
         self.bar.setFormat("%p%")
         v.addWidget(self.bar)
+        self.eta = label("", "hint")
+        v.addWidget(self.eta)
         v.addStretch()
         return w
 
     def _build_done(self):
         w, v = self._page()
+        v.setSpacing(12)                                 # הרבה כפתורים - שייכנסו גם במסך של מחשב נייד
+        v.setContentsMargins(40, 18, 40, 18)
         v.addWidget(label("השיר מוכן! ✔", "title"))
         self.done_hint = label("לחץ כדי להאזין ולהשוות", "hint")
         v.addWidget(self.done_hint)
@@ -279,7 +303,7 @@ class MainWindow(QMainWindow):
         self.play_timer.timeout.connect(self._update_pos)
         self.play_timer.start(200)
         b_res = big_button("▶  האזן לשיר המוכן", "green")
-        b_res.setMinimumHeight(90)
+        b_res.setMinimumHeight(72)
         b_res.clicked.connect(lambda: self._play(self.result))
         b_org = big_button("▶  האזן להקלטה המקורית", "light")
         b_org.clicked.connect(lambda: self._play(self.original))
@@ -298,7 +322,7 @@ class MainWindow(QMainWindow):
         self.b_undo.clicked.connect(self.undo)
         self.b_redo = big_button("↷  החזר שינוי", "light")
         self.b_redo.clicked.connect(self.redo)
-        b_graph = big_button("📈  גרף תיקון הזיופים", "light")
+        b_graph = big_button("📈  תיקון זיופים ידני", "light")
         b_graph.clicked.connect(self.show_pitch)
         b_proj = big_button("📁  שמור פרויקט", "light")
         b_proj.clicked.connect(self.save_project)
@@ -307,11 +331,19 @@ class MainWindow(QMainWindow):
         for b in (self.b_undo, self.b_redo, b_graph, b_proj, b_share):
             b.setStyleSheet("font-size:20px; min-height:48px; padding:8px;")
             h4.addWidget(b)
-        v.addWidget(b_res); v.addLayout(pr); v.addLayout(h2); v.addLayout(h3); v.addLayout(h4)
+        h5 = QHBoxLayout()
+        b_phr = big_button("✂  עריכת משפטים (הקלטה מחדש / חזרה)", "light")
+        b_phr.clicked.connect(self.edit_phrases)
+        b_sheet = big_button("🎼  דף אקורדים להדפסה", "light")
+        b_sheet.clicked.connect(self.save_chord_sheet)
+        for b in (b_phr, b_sheet):
+            b.setStyleSheet("font-size:20px; min-height:48px; padding:8px;")
+            h5.addWidget(b)
+        v.addWidget(b_res); v.addLayout(pr); v.addLayout(h2); v.addLayout(h3); v.addLayout(h4); v.addLayout(h5)
         v.addStretch()
         h = QHBoxLayout()
         b_save = big_button("💾  שמור", None)
-        b_save.setMinimumHeight(90)
+        b_save.setMinimumHeight(72)
         b_save.clicked.connect(self.save_result)
         b_new = big_button("שיר חדש", "light")
         b_new.clicked.connect(self.go_home)
@@ -341,7 +373,8 @@ class MainWindow(QMainWindow):
         try:
             self.recorder.start()
             if self.metro_on.isChecked():
-                self.metronome.start(self.metro_bpm.value(), self.settings.meter)
+                m = self.settings.meter
+                self.metronome.start(self.metro_bpm.value(), 2 if m == 6 else m)
         except AudioError as e:
             self.recorder.stop()
             self.metronome.stop()
@@ -429,6 +462,7 @@ class MainWindow(QMainWindow):
         self.settings.key = None
         self.settings.chords_text = ""
         self.settings.sections = None
+        self.settings.note_fixes = None
         if self.settings.tempo_mode == "manual" and not self.metro_on.isChecked():
             self.settings.tempo_mode = "auto"
         self.history = History()
@@ -463,7 +497,7 @@ class MainWindow(QMainWindow):
     def make_song(self, change_key=False, record=True):
         self._record = record
         st = self.styles[max(0, self.style_group.checkedId())]
-        self.bar.setValue(0)
+        self._start_work()
         self.work_title.setText("מכין את השיר...")
         self.stack.setCurrentWidget(self.work)
         song = self.song
@@ -486,7 +520,7 @@ class MainWindow(QMainWindow):
                 song.next_key()
             return song.make(st, p, settings)
         self.worker = Worker(job)
-        self.worker.progress.connect(self.bar.setValue)
+        self.worker.progress.connect(self._on_progress)
         self.worker.message.connect(self.work_title.setText)
         self.worker.finished_ok.connect(lambda r: self._processed(r, st))
         self.worker.failed.connect(lambda m: (self.error(m), self.go_home()))
@@ -568,9 +602,100 @@ class MainWindow(QMainWindow):
         self.b_undo.setEnabled(self.history.can_undo())
         self.b_redo.setEnabled(self.history.can_redo())
 
+    def _start_work(self):
+        self._work_t0 = time.time()
+        self.bar.setValue(0)
+        self.eta.setText("")
+
+    def _on_progress(self, p):
+        """מעדכן את פס ההתקדמות ומעריך כמה זמן נשאר."""
+        self.bar.setValue(p)
+        self.eta.setText(eta_text(time.time() - getattr(self, "_work_t0", time.time()), p))
+
     def show_pitch(self):
-        if self.song and self.song.analysis is not None:
-            PitchDialog(self, self.song.pitch_curves(self.settings)).exec()
+        if not (self.song and self.song.analysis is not None):
+            return
+        song, st = self.song, self.settings
+        self.player.stop()
+
+        def hear(fixes, start, end):
+            self._play(song.hear_fix(fixes, start, end, st))
+        dlg = PitchDialog(self, lambda fixes: song.pitch_curves(st, fixes), st.transpose, hear)
+        ok = dlg.exec()
+        self.player.stop()
+        if ok and dlg.changed():
+            self.settings.note_fixes = dlg.fixes() or None
+            self.make_song()
+
+    def edit_phrases(self):
+        """הקלטה מחדש של משפט, חזרה על משפט או מחיקה - ואז השיר מוכן מחדש."""
+        if not (self.song and self.song.analysis is not None):
+            return
+        from .audio import edit
+        self.player.stop()
+        regions = edit.regions(self.song.analysis, len(self.original))
+        if not regions:
+            return
+        dlg = PhraseDialog(self, self.original, regions, self._play, self.player.stop, Recorder)
+        if not dlg.exec() or not dlg.dirty:
+            return
+        self.original = dlg.raw
+        self.song = Song(dlg.raw)
+        # ההקלטה השתנתה - מה שנקבע לפי הזמנים הישנים כבר לא מתאים
+        self.settings.sections = None
+        self.settings.note_fixes = None
+        self.settings.chords_text = ""
+        self.history = History()
+        self.make_song()
+
+    def save_chord_sheet(self):
+        if not (self.song and self.song.analysis is not None):
+            return
+        from . import chordsheet
+        start = os.path.join(QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation), "דף אקורדים.pdf")
+        path, _ = QFileDialog.getSaveFileName(self, "שמור דף אקורדים", start, "קובץ PDF (*.pdf)")
+        if not path:
+            return
+        if not path.lower().endswith(".pdf"):
+            path += ".pdf"
+        try:
+            title = os.path.splitext(os.path.basename(path))[0]
+            chordsheet.save_pdf(path, chordsheet.sheet(self.song, title))
+        except Exception:
+            log_error(traceback.format_exc())
+            self.error("לא הצלחתי ליצור את דף האקורדים.\nבדוק שהקובץ לא פתוח בתוכנה אחרת ונסה שוב.")
+            return
+        self._info("דף אקורדים", f"דף האקורדים נשמר:\n{path}\n\nאפשר לפתוח אותו ולהדפיס.")
+
+    def check_update(self):
+        from . import update, APP_VERSION
+        self.b_update.setEnabled(False)
+        self.b_update.setText("בודק...")
+        self.upd_worker = Worker(lambda p: update.check())
+
+        def done(res):
+            self.b_update.setEnabled(True)
+            self.b_update.setText("בדוק אם יש גרסה חדשה")
+            state, version, url = res
+            if state == "error":
+                self._info("בדיקת גרסה", "לא הצלחתי לבדוק.\nודא שהמחשב מחובר לאינטרנט ונסה שוב.")
+            elif state == "latest":
+                self._info("בדיקת גרסה", f"התוכנה מעודכנת (גרסה \u2066{APP_VERSION}\u2069).")
+            else:
+                box = QMessageBox(self)
+                box.setLayoutDirection(Qt.RightToLeft)
+                box.setWindowTitle("בדיקת גרסה")
+                box.setText(f"יש גרסה חדשה: \u2066{version}\u2069\n(הגרסה שלך: \u2066{APP_VERSION}\u2069)")
+                go = box.addButton("פתח את עמוד ההורדה", QMessageBox.AcceptRole)
+                box.addButton("לא עכשיו", QMessageBox.RejectRole)
+                box.exec()
+                if box.clickedButton() is go:
+                    from PySide6.QtCore import QUrl
+                    from PySide6.QtGui import QDesktopServices
+                    QDesktopServices.openUrl(QUrl(url))
+        self.upd_worker.finished_ok.connect(done)
+        self.upd_worker.failed.connect(lambda m: done(("error", None, None)))
+        self.upd_worker.start()
 
     def _info(self, title, text):
         box = QMessageBox(self)
@@ -633,11 +758,11 @@ class MainWindow(QMainWindow):
             return
         st = self.styles[max(0, self.style_group.checkedId())]
         settings, fmt = self.settings, self.save_fmt
-        self.bar.setValue(0)
+        self._start_work()
         self.work_title.setText("מעבד את השירים...")
         self.stack.setCurrentWidget(self.work)
         self.worker = Worker(lambda p: batch(paths, st, settings, folder, fmt, progress=p))
-        self.worker.progress.connect(self.bar.setValue)
+        self.worker.progress.connect(self._on_progress)
         self.worker.message.connect(self.work_title.setText)
         self.worker.finished_ok.connect(self._batch_done)
         self.worker.failed.connect(lambda m: (self.error(m), self.go_home()))
