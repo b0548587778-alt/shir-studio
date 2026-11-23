@@ -375,3 +375,43 @@ def test_medley_and_update_check(qapp, win, voice, monkeypatch):
     monkeypatch.setattr(update, "latest_version", lambda *a, **k: "9.9.9")
     w.home.check_update.emit()
     wait(qapp, lambda: "יש גרסה חדשה" in w.log["ask"])
+
+
+def test_sound_options_and_song_details(qapp, win, voice, monkeypatch):
+    """אופי הקול, גודל האולם, עוצמת השיר, FLAC - ושם השיר והזמר בתוך הקובץ."""
+    from PySide6.QtWidgets import QFileDialog
+    from shir_studio.advanced import AdvancedDialog
+    from shir_studio.audio import loudness
+    from shir_studio import tags, prefs
+    w = win
+    ready(qapp, w, voice)
+    w.make_song()
+    wait(qapp, lambda: w.stack.currentWidget() is w.done)
+    before = loudness.lufs(w.result)
+
+    def fake_exec(self):
+        self.voice_tone.setCurrentIndex(self.voice_tone.findData("warm"))
+        self.space.setCurrentIndex(self.space.findData("big"))
+        self.loudness.setCurrentIndex(self.loudness.findData("loud"))
+        self.artist.setText("יוסף כהן")
+        return 1
+    monkeypatch.setattr(AdvancedDialog, "exec", fake_exec)
+    w.open_advanced(remake=True)
+    wait(qapp, lambda: w.stack.currentWidget() is w.done)
+    st = w.settings
+    assert (st.voice_tone, st.space, st.loudness) == ("warm", "big", "loud")
+    assert loudness.lufs(w.result) > before + 1.5
+    assert prefs.load()["artist"] == "יוסף כהן"                # שם הזמר נשמר לפעם הבאה
+    mp3 = str(w.tmp / "ניגון של שבת.mp3")
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", staticmethod(lambda *a, **k: (mp3, "")))
+    w.save_result()
+    got = tags.read(mp3)
+    assert got["title"] == "ניגון של שבת" and got["artist"] == "יוסף כהן"
+    w.save_fmt = "flac"
+    flac = str(w.tmp / "ניגון")
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", staticmethod(lambda *a, **k: (flac, "")))
+    w.save_result()
+    assert os.path.getsize(flac + ".flac") > 20000 and not w.log["error"]
+    w.undo()                                                # ביטול מחזיר גם את ההגדרות החדשות
+    wait(qapp, lambda: w.stack.currentWidget() is w.done)
+    assert w.settings.loudness == "normal"

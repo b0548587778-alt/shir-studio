@@ -51,7 +51,8 @@ def load_stereo(path: str) -> np.ndarray:
     return np.ascontiguousarray(data, dtype=np.float32)
 
 
-def save(path: str, data: np.ndarray, bitrate: int = 256) -> None:
+def save(path: str, data: np.ndarray, bitrate: int = 256, tags: dict = None) -> None:
+    """tags: פרטי השיר (title, artist...) - נכתבים בתוך קובץ MP3."""
     data = np.clip(np.asarray(data, dtype=np.float32), -1.0, 1.0)
     try:
         if path.lower().endswith(".mp3"):
@@ -63,8 +64,9 @@ def save(path: str, data: np.ndarray, bitrate: int = 256) -> None:
             enc.set_channels(ch)
             enc.set_quality(2)
             pcm = (data * 32767).astype("<i2").tobytes()   # שורות = דגימות, משולב ערוצים
+            from ..tags import id3
             with open(path, "wb") as f:
-                f.write(enc.encode(pcm) + enc.flush())
+                f.write(id3(tags) + enc.encode(pcm) + enc.flush())
         else:
             sf.write(path, data, SR, subtype="PCM_16")
     except PermissionError:
