@@ -38,6 +38,9 @@ class Analysis:
     chords_per_bar: int = 2
     transpose: int = 0
     auto: dict = field(default_factory=dict)     # הערכים שזוהו אוטומטית
+    note_edits: dict = None       # תיקון ידני לצליל: {מפתח הצליל: חצאי טונים מהיעד האוטומטי, או "off"}
+    modulate_at: float = None     # עליית סולם: מאיזה רגע הליווי עולה (None = בלי)
+    modulate_voice: float = None  # ...ומאיזה רגע הקול עולה (בהפסקה שלפני המשפט)
 
 
 def _tuning_curve(midi, voiced):
@@ -105,7 +108,34 @@ def _snap(center, scale):
     return near
 
 
-def _targets(mc, voiced, notes, scale, strength):
+def note_key(nt):
+    """מזהה קבוע של צליל (לפי רגע ההתחלה) - לשמירת תיקונים ידניים."""
+    return str(int(round(nt.start * 100)))
+
+
+def note_edit(edits, nt):
+    if not edits:
+        return None
+    c = int(round(nt.start * 100))
+    for d in (0, 1, -1, 2, -2):
+        if str(c + d) in edits:
+            return edits[str(c + d)]
+    return None
+
+
+def note_targets(a):
+    """לגרף: (התחלה, סוף, מה שהושר, הצליל שאליו מתקנים, מפתח) לכל צליל."""
+    scale = theory.scale_pcs(a.tonic, a.mode)
+    out = []
+    for nt in a.notes:
+        ed = note_edit(a.note_edits, nt)
+        auto = _snap(nt.pitch, scale)
+        tgt = nt.pitch if ed == "off" else auto + (int(ed) if ed is not None else 0)
+        out.append((nt.start, nt.end, nt.pitch, tgt, note_key(nt), auto))
+    return out
+
+
+def _targets(mc, voiced, notes, scale, strength, edits=None):
     """תיקון לכל צליל בשלמותו - שומר על הוויברטו והגלישות הטבעיות."""
     corr = np.zeros(len(mc))
     inside = np.zeros(len(mc), bool)
@@ -114,6 +144,12 @@ def _targets(mc, voiced, notes, scale, strength):
         target = _snap(nt.pitch, scale)
         dev = target - nt.pitch
         inside[a:b] = True                        # גם צליל מדויק (בלי תיקון) הוא 'עוגן' למעברים
+        ed = note_edit(edits, nt)
+        if ed == "off":                           # המשתמש ביקש: את הצליל הזה לא לתקן
+            continue
+        if ed is not None:                        # המשתמש גרר את הצליל - מתקנים בדיוק לשם
+            corr[a:b] = target + int(ed) - nt.pitch
+            continue
         if abs(dev) < 0.08:
             continue
         # צליל שנמצא בדיוק באמצע בין שני צלילים - לא בטוח מה התכוון הזמר, מתקנים פחות
@@ -317,14 +353,28 @@ def set_key(a, index):
     index = index % len(a.keys)
     a.key_index = index
     a.tonic, a.mode = a.keys[index][0], a.keys[index][1]
-    voiced = a.f0 > 0
-    scale = theory.scale_pcs(a.tonic, a.mode)
-    corr = _targets(np.nan_to_num(a.midi_c), voiced, a.notes, scale, a.strength)
-    total = np.where(voiced, corr - a.curve_term * a.strength, 0)
-    a.correction = gaussian_filter1d(total, 2)
+    a.correction = correction_for(a, a.strength)
     chords = theory.chords_for(a.tonic, a.mode)
     a.chords = _merge(_choose_chords(chord_segments(a), a.notes, chords))
     return a
+
+
+def correction_for(a, strength):
+    """תיקון הקול (חצאי טונים לכל פריים) בעוצמה נתונה, כולל התיקונים הידניים."""
+    voiced = a.f0 > 0
+    scale = theory.scale_pcs(a.tonic, a.mode)
+    corr = _targets(np.nan_to_num(a.midi_c), voiced, a.notes, scale, strength, a.note_edits)
+    total = np.where(voiced, corr - a.curve_term * strength, 0)
+    return gaussian_filter1d(total, 2)
+
+
+def use_grid(a, beats, tempo, steady):
+    """קובע את הפעמות מבחוץ - כשהזמר שר על ליווי קיים, הקצב כבר ידוע בדיוק."""
+    a.auto.update(beats=np.asarray(beats, float), tempo=float(tempo), steady=bool(steady))
+    a.beats, a.tempo, a.steady = a.auto["beats"], a.auto["tempo"], a.auto["steady"]
+    if a.steady:
+        a.downbeat = _downbeat(a.beats, a.notes, a.meter)
+    set_key(a, a.key_index)
 
 
 def chord_segments(a):
@@ -356,6 +406,7 @@ def apply_settings(a, st):
     a.chords_per_bar = st.chords_per_bar if st.meter == 4 else 1
     a.transpose = st.transpose
     a.strength = st.tune / 100
+    a.note_edits = getattr(st, "note_edits", None) or None
     # קצב
     if st.tempo_mode == "free":
         a.steady = False

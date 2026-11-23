@@ -33,14 +33,17 @@ class Settings:
     choir: bool = False         # מקהלה: כמה עותקים של הקול עם הבדלים קטנים
     swaps: dict = None          # החלפת כלים בסגנון: {"clarinet": "violin"}
     sections: list = None       # בית/פזמון ידני לכל משפט: [0, 1, 0, 1] (None = אוטומטי)
+    modulate: bool = False      # עליית סולם (חצי טון) בפזמון האחרון - הקול והליווי יחד
+    note_edits: dict = None     # תיקון ידני מהגרף: {מפתח הצליל: חצאי טונים, או "off" = בלי תיקון}
 
     def prep_key(self):
         return (self.denoise,)
 
 
 class Song:
-    def __init__(self, raw):
+    def __init__(self, raw, grid=None):
         self.raw = raw
+        self.grid = grid              # (פעמות, קצב, קבוע?) ידועים מראש - כששרו על ליווי קיים
         self.clean = None
         self.tuned = None
         self.analysis = None
@@ -62,14 +65,38 @@ class Song:
                              progress=lambda p: progress(2 + p * 0.18, None))
         progress(22, "מזהה את המנגינה והקצב...")
         self.analysis = analyze(self.clean, progress=lambda p: progress(22 + p * 0.2, None))
+        if self.grid:
+            from .music.analysis import use_grid
+            use_grid(self.analysis, *self.grid)
         self._prep = st.prep_key()
         self._tune_key = None
 
+    def _apply(self, st, modulate=True):
+        """מחיל את ההגדרות על הניתוח, וקובע אם ומתי הסולם עולה."""
+        from .music.arrange import modulation
+        a = self.analysis
+        apply_settings(a, st)
+        a.sections_override = st.sections
+        m = modulation(a) if (st.modulate and modulate) else None
+        a.modulate_at, a.modulate_voice = m if m else (None, None)
+
+    def _up(self):
+        """עליית הסולם של הקול: חצאי טונים לכל פריים (0 עד הרגע שבו עולים)."""
+        from .audio.pitch import FRAME_SEC
+        from .music.arrange import MOD_UP
+        a = self.analysis
+        if a.modulate_voice is None:
+            return 0.0
+        return np.where(np.arange(len(a.f0)) * FRAME_SEC >= a.modulate_voice, float(MOD_UP), 0.0)
+
+    def _edits_key(self, st):
+        return (repr(sorted((st.note_edits or {}).items())), self.analysis.modulate_voice)
+
     def _retune(self, st):
         a = self.analysis
-        k = (st.tune, st.transpose, a.tonic, a.mode, a.key_index)
+        k = (st.tune, st.transpose, a.tonic, a.mode, a.key_index) + self._edits_key(st)
         if k != self._tune_key:
-            corr = a.correction + st.transpose
+            corr = a.correction + st.transpose + self._up()
             self.tuned = shift(self.clean, a.f0, corr)
             self._tune_key = k
 
@@ -79,13 +106,14 @@ class Song:
             self.harmony = None
             return
         k = (st.harmony, st.tune, st.transpose, a.tonic, a.mode, a.key_index, len(a.chords),
-             st.chords_text, st.meter, st.tempo_mode, st.bpm)
+             st.chords_text, st.meter, st.tempo_mode, st.bpm) + self._edits_key(st)
         if k != self._harm_key:
             from .music.harmony import harmony_shift
+            from .music.analysis import correction_for
             # הקול השני תמיד מתוקן מלא - שלא יתנגש עם הקול הראשי
-            full = a.correction / max(a.strength, 1e-3) if a.strength > 0 else a.correction
+            full = correction_for(a, 1.0) if a.strength > 0 else a.correction
             modes = ("above", "below") if st.harmony == "three" else (st.harmony,)
-            self.harmony = [shift(self.clean, a.f0, full + st.transpose + harmony_shift(a, m))
+            self.harmony = [shift(self.clean, a.f0, full + st.transpose + self._up() + harmony_shift(a, m))
                             for m in modes]
             self._harm_key = k
 
@@ -97,8 +125,7 @@ class Song:
         st = settings or Settings()
         if self.analysis is None or self._prep != st.prep_key():
             self.prepare(progress, st)
-        apply_settings(self.analysis, st)
-        self.analysis.sections_override = st.sections
+        self._apply(st)
         # סגנון ווקאלי: מקהלה שלמה מהקול של הזמר עצמו (אם המשתמש לא בחר אחרת)
         voices = style.get("voices")
         if voices and st.harmony == "off":
@@ -134,8 +161,7 @@ class Song:
         st = settings or Settings()
         if self.analysis is None or self._prep != st.prep_key():
             self.prepare(progress, st)
-        apply_settings(self.analysis, st)
-        self.analysis.sections_override = st.sections
+        self._apply(st, modulate=False)          # בהאזנה המהירה שומעים רק את ההתחלה
         self._retune(st)
         a = copy.copy(self.analysis)
         cut = min(a.duration, seconds)
@@ -167,7 +193,8 @@ class Song:
         corr = a.correction if a.correction is not None else np.zeros(len(f0))
         after = before + corr[: len(f0)] + (settings.transpose if settings else 0)
         t = np.arange(len(f0)) * FRAME_SEC
-        return t, before, after, [(nt.start, nt.end, nt.pitch) for nt in a.notes]
+        from .music.analysis import note_targets
+        return t, before, after, note_targets(a)
 
     def phrases(self, style=None):
         """משפטי השיר: [(התחלה, סוף, 0=בית/1=פזמון)] - למסך העריכה."""
@@ -189,21 +216,29 @@ class Song:
                 "tonic": a.tonic, "mode": a.mode, "chords": chords_as_text(a), "meter": a.meter,
                 "phrases": self.phrases()}
 
-    def export_extras(self, folder, base):
-        """קבצים נפרדים לקול ולליווי (WAV) וקובץ MIDI."""
+    def stems(self, progress=None):
+        """הקול והליווי בנפרד. אם לא נשמרו - מכינים את השיר שוב, הפעם עם שניהם."""
         if self.last_stems is None and self._last_make:
-            self.keep_stems = True                     # מכינים שוב, הפעם עם קול וליווי נפרדים
+            self.keep_stems = True
             try:
-                self.make(self._last_make[0], lambda p, m=None: None, self._last_make[1])
+                self.make(self._last_make[0], progress or (lambda p, m=None: None), self._last_make[1])
             finally:
                 self.keep_stems = False
+        return self.last_stems or {}
+
+    def export_extras(self, folder, base):
+        """קבצים נפרדים לקול ולליווי (WAV) וקובץ MIDI."""
+        self.stems()
         paths = []
         for name, data in (self.last_stems or {}).items():
             p = os.path.join(folder, f"{base} - {name}.wav")
             save(p, np.clip(data, -1, 1))
             paths.append(p)
         a = self.analysis
-        melody = [(nt.start, nt.end, round(nt.pitch) + a.transpose) for nt in a.notes]
+        from .music.arrange import MOD_UP
+        mv = a.modulate_voice
+        melody = [(nt.start, nt.end, round(nt.pitch) + a.transpose
+                   + (MOD_UP if mv is not None and nt.start >= mv else 0)) for nt in a.notes]
         p = os.path.join(folder, f"{base}.mid")
         midi.write(p, a.tempo if a.steady else 120.0, melody, self.last_tracks, self.last_lead)
         paths.append(p)

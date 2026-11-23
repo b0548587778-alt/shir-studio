@@ -24,6 +24,8 @@ def settings_from_dict(d):
     d = {k: v for k, v in (d or {}).items() if k in names}
     if d.get("key"):
         d["key"] = (int(d["key"][0]), str(d["key"][1]))
+    if d.get("note_edits"):
+        d["note_edits"] = {str(k): v for k, v in d["note_edits"].items()}
     return Settings(**d)
 
 
