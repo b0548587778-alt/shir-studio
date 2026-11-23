@@ -62,7 +62,7 @@ class MainWindow(QMainWindow):
         self.prefs = prefs_mod.load()
         self.settings = prefs_mod.personal_settings(self.prefs)
         self.save_extras = bool(self.prefs.get("extras", False))
-        self.save_fmt = self.prefs.get("fmt") if self.prefs.get("fmt") in ("mp3", "wav") else "mp3"
+        self.save_fmt = self.prefs.get("fmt") if self.prefs.get("fmt") in ("mp3", "wav", "flac") else "mp3"
         self.metronome = Metronome()
         self.history = History()
 
@@ -467,9 +467,14 @@ class MainWindow(QMainWindow):
 
     def open_advanced(self, remake):
         info = self.song.info() if (self.song and self.song.analysis) else None
-        dlg = AdvancedDialog(self, self.settings, info, self.save_extras, self.save_fmt, style=self.style())
+        dlg = AdvancedDialog(self, self.settings, info, self.save_extras, self.save_fmt, style=self.style(),
+                             artist=self.prefs.get("artist", ""))
         r = dlg.exec()
         if r in (1, 3):
+            artist = dlg.artist.text().strip()
+            if artist != self.prefs.get("artist", ""):
+                self.prefs = dict(self.prefs, artist=artist)
+                prefs_mod.save(self.prefs)
             self.settings = dlg.settings()
             self.save_extras = dlg.extras.isChecked()
             self.save_fmt = dlg.fmt.currentData()
@@ -664,7 +669,7 @@ class MainWindow(QMainWindow):
         try:
             os.makedirs(d, exist_ok=True)
             path = os.path.join(d, time.strftime("השיר שלי %Y-%m-%d %H-%M.mp3"))
-            save(path, self.result, bitrate=128)
+            save(path, self.result, bitrate=128, tags=self._tags(path))
         except Exception:
             log_error(traceback.format_exc())
             self.error("לא הצלחתי ליצור את הקובץ לשליחה.")
@@ -673,6 +678,11 @@ class MainWindow(QMainWindow):
         self._reveal(path)
         self._info("קובץ לשליחה", f"נוצר קובץ קטן ({mb:.1f}MB) שמתאים לוואטסאפ ולמייל:\n\n{path}\n\n"
                    "בוואטסאפ: לחצו על 📎 ← מסמך, ובחרו את הקובץ.")
+
+    def _tags(self, path):
+        """פרטי השיר שנכתבים בתוך הקובץ: שם השיר (שם הקובץ) ושם הזמר."""
+        return {"title": os.path.splitext(os.path.basename(path))[0], "artist": self.prefs.get("artist", ""),
+                "year": time.strftime("%Y"), "software": f"{APP_NAME} {APP_VERSION}"}
 
     @staticmethod
     def _reveal(path):
@@ -754,7 +764,7 @@ class MainWindow(QMainWindow):
     def save_result(self):
         ext = self.save_fmt
         start = os.path.join(QStandardPaths.writableLocation(QStandardPaths.MusicLocation), f"השיר שלי.{ext}")
-        flt = "קובץ MP3 (*.mp3)" if ext == "mp3" else "קובץ WAV (*.wav)"
+        flt = {"mp3": "קובץ MP3 (*.mp3)", "flac": "קובץ FLAC (*.flac)"}.get(ext, "קובץ WAV (*.wav)")
         path, _ = QFileDialog.getSaveFileName(self, "שמור את השיר", start, flt)
         if not path:
             return
@@ -762,7 +772,7 @@ class MainWindow(QMainWindow):
             path += "." + ext
         extra = []
         try:
-            save(path, self.result)
+            save(path, self.result, tags=self._tags(path))
             if self.save_extras:
                 folder = os.path.dirname(path)
                 base = os.path.splitext(os.path.basename(path))[0]
@@ -811,7 +821,8 @@ class MainWindow(QMainWindow):
         ext = self.save_fmt
         start = os.path.join(QStandardPaths.writableLocation(QStandardPaths.MusicLocation), f"מחרוזת.{ext}")
         path, _ = QFileDialog.getSaveFileName(self, "שמור את המחרוזת", start,
-                                              "קובץ MP3 (*.mp3)" if ext == "mp3" else "קובץ WAV (*.wav)")
+                                              {"mp3": "קובץ MP3 (*.mp3)", "flac": "קובץ FLAC (*.flac)"}
+                                              .get(ext, "קובץ WAV (*.wav)"))
         if not path:
             return
         if not path.lower().endswith("." + ext):

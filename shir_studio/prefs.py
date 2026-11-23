@@ -7,7 +7,8 @@ from .log import log_dir
 from .pipeline import Settings
 
 # מה שנשמר כטעם אישי. סולם, אקורדים וקצב שייכים לשיר מסוים - ולא נשמרים.
-PERSONAL = ("denoise", "tune", "voice_db", "accomp_db", "reverb", "harmony", "choir", "swaps", "modulate")
+PERSONAL = ("denoise", "tune", "voice_db", "accomp_db", "reverb", "harmony", "choir", "swaps", "modulate",
+            "voice_tone", "space", "loudness")
 
 
 def _path():

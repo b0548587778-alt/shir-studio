@@ -234,11 +234,17 @@ def pan_gains(p):
     return np.cos(ang), np.sin(ang)
 
 
-def mix(voice, tracks, lead, style, accomp_db=0.0, voice_db=0.0, reverb=1.0, stems=False, harmony=None, choir=False):
+SPACES = {"room": (0.7, 0.9), "hall": (1.6, 2.0), "big": (2.7, 3.3)}      # אורך ההדהוד: (קול, ליווי) בשניות
+SPACE_NAMES = {"auto": "אולם (רגיל)", "room": "חדר קטן ואינטימי", "big": "אולם גדול / בית כנסת גדול"}
+
+
+def mix(voice, tracks, lead, style, accomp_db=0.0, voice_db=0.0, reverb=1.0, stems=False, harmony=None, choir=False,
+        tone="natural", space="auto", loudness="normal"):
     """voice: מונו מעובד. tracks: [(spec, buf)]. lead: שניות מבוא לפני השירה."""
     n = max(len(t[1]) for t in tracks) if tracks else len(voice) + int(lead * SR)
     n = max(n, len(voice) + int(lead * SR) + SR)
-    v = process_voice(voice.astype(np.float32))
+    from . import polish, loudness as loud_mod
+    v = polish.tone(process_voice(voice.astype(np.float32)), tone)
     vbuf = np.zeros(n, np.float32)
     s = int(lead * SR)
     vbuf[s:s + len(v)] = v * 10 ** (voice_db / 20)
@@ -287,7 +293,7 @@ def mix(voice, tracks, lead, style, accomp_db=0.0, voice_db=0.0, reverb=1.0, ste
     voices = harmony if isinstance(harmony, (list, tuple)) else ([harmony] if harmony is not None else [])
     pans = (0.35, -0.35)
     for hi, hv in enumerate(voices):
-        h = process_voice(hv.astype(np.float32))
+        h = polish.tone(process_voice(hv.astype(np.float32)), tone)
         h *= 10 ** (-6 / 20) * (vr / max(rms(h[np.abs(h) > 0.02]) if np.any(np.abs(h) > 0.02) else 1, 1e-9))
         h *= 10 ** (voice_db / 20)
         hb = np.zeros(n, np.float32)
@@ -304,8 +310,9 @@ def mix(voice, tracks, lead, style, accomp_db=0.0, voice_db=0.0, reverb=1.0, ste
     vst[:, 0] += ech * gl
     gl, gr = pan_gains(0.4)
     vst[:, 1] += np.concatenate([np.zeros(int(0.012 * SR)), ech[:-int(0.012 * SR)]]) * gr
-    vst = add_reverb(vst, rv * 0.7, 1.6)
-    acc = add_reverb(acc, rv, 2.0)
+    sec_v, sec_a = SPACES.get(space, SPACES["hall"])
+    vst = add_reverb(vst, rv * 0.7, sec_v)
+    acc = add_reverb(acc, rv, sec_a)
     out = vst + acc
     # חיתוך שקט בסוף
     loud = np.where(np.max(np.abs(out), axis=1) > 1e-4)[0]
@@ -318,6 +325,9 @@ def mix(voice, tracks, lead, style, accomp_db=0.0, voice_db=0.0, reverb=1.0, ste
     out = saturate(out / pk * 0.8) * pk / 0.8
     g = rms(out) / max(pre, 1e-9)
     out = limiter(out)
+    # עוצמה לפי התקן (LUFS) ושיא אמיתי בטוח - השיר נשמע באותה עוצמה כמו שירים אחרים
+    out, extra = loud_mod.finalize(out, loudness, limiter)
+    g *= extra
     fade = int(0.3 * SR)
     out[-fade:] *= np.linspace(1, 0, fade)[:, None]
     if stems:

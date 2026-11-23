@@ -35,6 +35,9 @@ class Settings:
     sections: list = None       # בית/פזמון ידני לכל משפט: [0, 1, 0, 1] (None = אוטומטי)
     modulate: bool = False      # עליית סולם (חצי טון) בפזמון האחרון - הקול והליווי יחד
     note_edits: dict = None     # תיקון ידני מהגרף: {מפתח הצליל: חצאי טונים, או "off" = בלי תיקון}
+    voice_tone: str = "natural" # אופי הקול: natural / warm / bright / radio
+    space: str = "auto"         # גודל האולם של ההדהוד: auto / room / big
+    loudness: str = "normal"    # עוצמת השיר המוכן: soft / normal / loud
 
     def prep_key(self):
         return (self.denoise,)
@@ -63,6 +66,8 @@ class Song:
         progress(2, "מנקה רעשי רקע...")
         self.clean = denoise(self.raw, strength=st.denoise / 100,
                              progress=lambda p: progress(2 + p * 0.18, None))
+        from .audio.polish import clean_up
+        self.clean = clean_up(self.clean)             # קליקים ופיצוצי פ' / ב' מול המיקרופון
         progress(22, "מזהה את המנגינה והקצב...")
         self.analysis = analyze(self.clean, progress=lambda p: progress(22 + p * 0.2, None))
         if self.grid:
@@ -145,7 +150,8 @@ class Song:
         style = dict(style, _tempo=float(self.analysis.tempo) if self.analysis.steady else 90.0)
         res = mix(self.tuned, tracks, lead, style, accomp_db=st.accomp_db,
                   voice_db=st.voice_db, reverb=st.reverb / 100, stems=self.keep_stems,
-                  harmony=self.harmony, choir=st.choir)
+                  harmony=self.harmony, choir=st.choir, tone=st.voice_tone, space=st.space,
+                  loudness=st.loudness)
         out, stems = res if self.keep_stems else (res, None)
         self._last_make = (style, st)
         # שומרים רק את רשימת התווים (לקובץ MIDI) - לא את הצליל של כל כלי, כדי לפנות זיכרון
@@ -178,7 +184,7 @@ class Song:
         style["_tempo"] = float(a.tempo) if a.steady else 90.0
         voice = self.tuned[: int((cut + 0.5) * 44100)]
         out = mix(voice, tracks, lead, style, accomp_db=st.accomp_db, voice_db=st.voice_db,
-                  reverb=st.reverb / 100)
+                  reverb=st.reverb / 100, tone=st.voice_tone, space=st.space, loudness=st.loudness)
         progress(100, None)
         return out[: int((lead + cut + 2.5) * 44100)]
 
