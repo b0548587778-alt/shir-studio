@@ -14,36 +14,62 @@ def _highpass(x, cutoff=70.0):
     return sosfiltfilt(sos, x).astype(np.float32)
 
 
+BLOCK = 20 * SR       # עיבוד בקטעים של 20 שניות - שיר ארוך לא ימלא את הזיכרון
+MARGIN = SR           # שנייה של חפיפה בכל צד, כדי שלא יהיו 'תפרים'
+
+
+def _blocks(n):
+    for s0 in range(0, n, BLOCK):
+        e0 = min(n, s0 + BLOCK)
+        yield s0, e0, max(0, s0 - MARGIN), min(n, e0 + MARGIN)
+
+
+def _spec(seg):
+    _, _, Z = stft(seg, fs=SR, nperseg=NFFT, noverlap=NFFT - HOP)
+    return Z.astype(np.complex64)
+
+
 def denoise(x: np.ndarray, strength: float = 1.0, progress=None) -> np.ndarray:
     """strength: 0 (בלי ניקוי) עד 1 (ניקוי מלא)."""
     x = _highpass(x)
+    n = len(x)
     if progress:
         progress(10)
-    _, _, Z = stft(x, fs=SR, nperseg=NFFT, noverlap=NFFT - HOP)
-    mag = np.abs(Z)
-    db = 20 * np.log10(mag + 1e-10)
-    # פרופיל רעש: 15% מהפריימים השקטים ביותר
-    frame_energy = np.mean(mag ** 2, axis=0)
-    n_quiet = max(5, int(0.15 * len(frame_energy)))
-    quiet = np.argsort(frame_energy)[:n_quiet]
-    noise_mean = db[:, quiet].mean(axis=1, keepdims=True)
-    noise_std = db[:, quiet].std(axis=1, keepdims=True)
-    thresh = noise_mean + 1.5 * noise_std + 6.0
+    # שלב 1: פרופיל הרעש = 15% מהפריימים השקטים ביותר בכל השיר
+    cols, energies, total = [], [], 0
+    for s0, e0, a0, a1 in _blocks(n):
+        mag = np.abs(_spec(x[a0:a1]))
+        k0, k1 = (s0 - a0) // HOP, (e0 - a0) // HOP + 1     # רק החלק המרכזי של הקטע
+        mag = mag[:, k0:k1]
+        en = np.mean(mag ** 2, axis=0)
+        total += len(en)
+        keep = np.argsort(en)[: max(5, int(0.3 * len(en)))]
+        cols.append(mag[:, keep])
+        energies.append(en[keep])
+    cols = np.concatenate(cols, axis=1)
+    energies = np.concatenate(energies)
+    quiet = np.argsort(energies)[: max(5, int(0.15 * total))]
+    qdb = 20 * np.log10(cols[:, quiet].astype(np.float64) + 1e-10)
+    thresh = (qdb.mean(axis=1, keepdims=True) + 1.5 * qdb.std(axis=1, keepdims=True) + 6.0).astype(np.float32)
+    del cols, qdb
     if progress:
         progress(40)
-    # מסכה רכה - מעבר הדרגתי ולא חד, כדי למנוע צלילים מתכתיים
-    mask = 1.0 / (1.0 + np.exp(-(db - thresh) / 3.0))
-    mask = uniform_filter(mask, size=(3, 5))
+    # שלב 2: ניקוי כל קטע
     floor = 10 ** (-(18.0 * strength) / 20)  # הנחתה מקסימלית של 18dB
-    gain = floor + (1 - floor) * mask
-    gain = 1 - strength * (1 - gain)
-    gain = gain * _dereverb_gain(mag, strength)
-    if progress:
-        progress(70)
-    _, y = istft(Z * gain, fs=SR, nperseg=NFFT, noverlap=NFFT - HOP)
-    y = y[: len(x)].astype(np.float32)
-    if len(y) < len(x):
-        y = np.pad(y, (0, len(x) - len(y)))
+    y = np.zeros(n, np.float32)
+    for s0, e0, a0, a1 in _blocks(n):
+        Z = _spec(x[a0:a1])
+        mag = np.abs(Z)
+        db = 20 * np.log10(mag + 1e-10)
+        # מסכה רכה - מעבר הדרגתי ולא חד, כדי למנוע צלילים מתכתיים
+        mask = 1.0 / (1.0 + np.exp(-(db - thresh) / 3.0))
+        mask = uniform_filter(mask, size=(3, 5))
+        gain = floor + (1 - floor) * mask
+        gain = 1 - strength * (1 - gain)
+        gain = gain * _dereverb_gain(mag, strength)
+        _, seg = istft(Z * gain, fs=SR, nperseg=NFFT, noverlap=NFFT - HOP)
+        seg = seg[: a1 - a0]
+        y[s0:e0] = seg[s0 - a0: s0 - a0 + (e0 - s0)]
     if progress:
         progress(90)
     return normalize(y)

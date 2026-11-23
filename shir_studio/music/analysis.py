@@ -190,10 +190,15 @@ def _downbeat(beats, notes, meter=4):
     return int(np.argmax(sc))
 
 
-def _choose_chords(segments, notes, chords, tonic_index=0):
+# משקלים שנבחרו בבדיקה על הקלטות אמיתיות: האקורד מתאים יותר למנגינה ופחות "תקוע" על הטוניקה
+CHORD_W = {"tonic": 0.15, "main": 0.15, "stay": 0.1, "change": -0.15, "resolve": 0.25, "out": 0.8}
+
+
+def _choose_chords(segments, notes, chords, tonic_index=0, w=None):
     """Viterbi על אקורדים: מתאים לצלילי המנגינה, מעדיף מעברים טבעיים."""
     if not segments:
         return []
+    w = w or CHORD_W
     K = len(chords)
     T = len(segments)
     em = np.zeros((T, K))
@@ -202,24 +207,24 @@ def _choose_chords(segments, notes, chords, tonic_index=0):
             ov = min(b, nt.end) - max(a, nt.start)
             if ov <= 0:
                 continue
-            w = ov * (1.5 if abs(nt.start - a) < 0.15 else 1.0)
+            wt = ov * (1.5 if abs(nt.start - a) < 0.15 else 1.0)
             pc = int(round(nt.pitch)) % 12
             for k, ch in enumerate(chords):
                 if pc == ch["pcs"][0]:
-                    em[t, k] += 1.0 * w
+                    em[t, k] += 1.0 * wt
                 elif pc in ch["pcs"]:
-                    em[t, k] += 0.8 * w
+                    em[t, k] += 0.8 * wt
                 else:
-                    em[t, k] -= 0.5 * w
+                    em[t, k] -= w["out"] * wt
         em[t] /= max(1e-3, b - a)
-    prior = np.array([0.35 if i == 0 else (0.2 if ch["degree"] in ("IV", "iv", "V") else 0)
+    prior = np.array([w["tonic"] if i == 0 else (w["main"] if ch["degree"] in ("IV", "iv", "V") else 0)
                       for i, ch in enumerate(chords)])
-    trans = np.full((K, K), -0.15)
-    np.fill_diagonal(trans, 0.1)
+    trans = np.full((K, K), w["change"])
+    np.fill_diagonal(trans, w["stay"])
     for i, ci in enumerate(chords):
         for j, cj in enumerate(chords):
             if ci["degree"] in ("V", "VII", "II") and j == 0:
-                trans[i, j] = 0.25
+                trans[i, j] = w["resolve"]
     score = em[0] + prior
     back = np.zeros((T, K), int)
     for t in range(1, T):

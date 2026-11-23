@@ -24,8 +24,8 @@ PACK = os.path.join(os.path.dirname(os.path.dirname(__file__)), "shir_studio", "
 # שם בתוכנה: (תבנית שם קובץ, מקסימום שניות לדגימה)
 MELODIC = {
     "piano": ("UprightPianoKW*.sf2", 4.0, True),
-    "guitar": ("SpanishClassicalGuitar*.sf2", 3.0, False),
-    "clarinet": ("Clarinet-*.sf2", 4.0, False),
+    "guitar": ("SpanishClassicalGuitar*.sf2", 3.0, True),
+    "clarinet": ("Clarinet-*.sf2", 4.0, True),
 }
 # תופים: שם -> מקש בערכה של Muldjord (לפי שמות הדגימות בקובץ)
 KIT_KEYS = {"kick": 48, "snare": 50, "hat": 52, "open_hat": 53, "ride": 54, "crash": 58,
@@ -135,14 +135,19 @@ def kit(path, pack):
             for rr in range(KIT_ROUND_ROBIN):
                 want = v + 3 * rr
                 g = min(zs, key=lambda z: abs(rng(z, 44)[0] - want))
-                data, info, typ = _read(sf, g, KIT_MAX_SEC[drum])
+                data, info, typ, right = _read(sf, g, KIT_MAX_SEC[drum], stereo=True)
                 fade = min(len(data), int(0.05 * info["sr"]))
-                d = data.astype(np.float32)
-                d[-fade:] *= np.linspace(1, 0, fade)
                 key = f"kit_{drum}_{v}_{rr}"
-                pack[key] = d.astype(np.int16)
-                regions.append(dict(info, key=key, drum=drum, vlo=bounds[li], vhi=bounds[li + 1] - 1,
-                                    rr=rr, lo=k, hi=k))
+                reg = dict(info, key=key, drum=drum, vlo=bounds[li], vhi=bounds[li + 1] - 1, rr=rr, lo=k, hi=k)
+                for kk, ch in ((key, data), (key + "_R", right)):
+                    if ch is None:
+                        continue
+                    d = ch.astype(np.float32)
+                    d[-fade:] *= np.linspace(1, 0, fade)
+                    pack[kk] = d.astype(np.int16)
+                if right is not None:
+                    reg["right"] = key + "_R"
+                regions.append(reg)
     return regions
 
 

@@ -89,6 +89,7 @@ def test_new_orchestral_instruments_in_tune():
     from shir_studio.audio.pitch import yin, hz_to_midi
     for inst, m in (("violin", 67), ("strings", 64), ("trumpet", 67), ("flute", 74), ("cello", 50)):
         x = sampler.note(inst, m, 1.2, 0.8)
+        x = x.mean(axis=1) if x.ndim == 2 else x                       # כלי בסטריאו
         f, _ = yin(x[11025:44100])
         assert abs(np.median(hz_to_midi(f[f > 0])) - m) < 0.3, inst
 

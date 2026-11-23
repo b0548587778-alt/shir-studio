@@ -5,6 +5,15 @@ from scipy.signal import butter, sosfilt, resample_poly
 from ..audio.fileio import SR
 
 _cache = {}
+_cache_bytes = [0]
+CACHE_LIMIT = 300 * 1024 * 1024        # זיכרון מקסימלי לצלילים שמורים (300MB) - שלא ייגמר הזיכרון במחשב
+
+
+def _remember(key, x):
+    if _cache_bytes[0] + x.nbytes > CACHE_LIMIT:
+        return
+    _cache[key] = x
+    _cache_bytes[0] += x.nbytes
 _rng = np.random.default_rng(1234)
 
 
@@ -245,8 +254,7 @@ def render_note(instrument, midi, dur, vel, tuning=0.0):
         x = sampler.note(instrument, int(midi), dur, vel, tuning)
     else:
         x = MELODIC[instrument](hz(midi, tuning), dur, vel).astype(np.float32)
-    if len(_cache) < 3000:
-        _cache[key] = x
+    _remember(key, x)
     return x
 
 
@@ -255,11 +263,15 @@ def render_drum(name, vel):
         var = int(_rng.integers(2))                          # שתי גרסאות לכל מכה
         key = ("s", name, round(vel, 1), var)
         if key not in _cache:
-            _cache[key] = sampler.drum(name, vel, var)
+            x = sampler.drum(name, vel, var)
+            _remember(key, x)
+            return x
         return _cache[key]
     key = (name, round(vel, 1), int(_rng.integers(3)))   # 3 גרסאות לכל מכה - פחות 'מכני'
     if key not in _cache:
-        _cache[key] = DRUMS[name](vel).astype(np.float32)
+        x = DRUMS[name](vel).astype(np.float32)
+        _remember(key, x)
+        return x
     return _cache[key]
 
 

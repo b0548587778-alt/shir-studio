@@ -23,7 +23,7 @@ def reverb_ir(seconds=1.8):
         pre = int(0.022 * SR)
         ir = np.concatenate([np.zeros(pre), ir])
         ir = sosfilt(butter(1, 180, btype="high", fs=SR, output="sos"), ir)
-        irs.append(ir / np.sqrt(np.sum(ir ** 2)))
+        irs.append((ir / np.sqrt(np.sum(ir ** 2))).astype(np.float32))
     _ir_cache[seconds] = irs
     return irs
 
@@ -32,8 +32,10 @@ def add_reverb(stereo, amount, seconds=1.8):
     if amount <= 0:
         return stereo
     irs = reverb_ir(seconds)
-    wet = np.stack([oaconvolve(stereo[:, c], irs[c])[: len(stereo)] for c in range(2)], axis=1)
-    return stereo + amount * wet
+    out = stereo.astype(np.float32, copy=True)
+    for c in range(2):                               # ערוץ אחרי ערוץ - חוסך זיכרון
+        out[:, c] += amount * oaconvolve(stereo[:, c].astype(np.float32), irs[c])[: len(stereo)]
+    return out
 
 
 def rms(x):
@@ -139,38 +141,45 @@ def saturate(st, drive=1.15):
 
 
 def process_voice(v):
-    v = sosfiltfilt(butter(2, 90, btype="high", fs=SR, output="sos"), v)
-    v = _peaking(v, 250, -2.0, 1.0)      # פחות 'בוץ'
-    v = _peaking(v, 3200, 2.5, 0.8)      # בהירות ונוכחות
-    v = auto_eq(v)
-    v = deess(v)
-    v = gate(v)
-    v = ride(v)
+    f32 = lambda z: np.asarray(z, dtype=np.float32)     # אחרי כל שלב חוזרים ל-float32 - חצי זיכרון
+    v = f32(sosfiltfilt(butter(2, 90, btype="high", fs=SR, output="sos"), v))
+    v = f32(_peaking(v, 250, -2.0, 1.0))      # פחות 'בוץ'
+    v = f32(_peaking(v, 3200, 2.5, 0.8))      # בהירות ונוכחות
+    v = f32(auto_eq(v))
+    v = f32(deess(v))
+    v = f32(gate(v))
+    v = f32(ride(v))
     peak_ref = np.percentile(np.abs(v), 99.5) + 1e-9
-    v = v / peak_ref * 0.5
-    thr = 20 * np.log10(rms(v[np.abs(v) > 0.02]) if np.any(np.abs(v) > 0.02) else 0.1)
-    return compress(v, threshold_db=thr - 2, ratio=3.0)
+    v = v / np.float32(peak_ref) * np.float32(0.5)
+    loud = np.abs(v) > 0.02
+    thr = 20 * np.log10(rms(v[loud]) if np.any(loud) else 0.1)
+    del loud
+    return f32(compress(v, threshold_db=thr - 2, ratio=3.0))
 
 
 def master(st, target_db=-14.0):
     """עיבוד סופי (מאסטרינג): EQ עדין, קומפרסור 'דבק' ועוצמה כמו בשירים מסחריים."""
     sos_lo = butter(1, 60, btype="high", fs=SR, output="sos")
-    out = np.empty_like(st)
+    out = np.empty(st.shape, np.float32)
     for c in range(st.shape[1]):
         x = sosfiltfilt(sos_lo, st[:, c])
-        x = _peaking(x, 11000, 1.5, 0.7)                    # אוויר
-        out[:, c] = x
+        out[:, c] = _peaking(x, 11000, 1.5, 0.7)              # אוויר
+        del x
     mono = out.mean(axis=1)
-    env = np.sqrt(uniform_filter1d(mono ** 2, int(0.05 * SR)) + 1e-12)
+    env = np.sqrt(uniform_filter1d(mono ** 2, int(0.05 * SR)) + 1e-12).astype(np.float32)
+    del mono
     db = 20 * np.log10(env)
     thr = np.percentile(db, 80) - 3
     g = -np.maximum(db - thr, 0) * (1 - 1 / 2.0)
+    del db
     g = uniform_filter1d(g, int(0.2 * SR))
-    out *= 10 ** (g / 20)[:, None]
+    out *= (10 ** (g / 20)).astype(np.float32)[:, None]
+    del g
     # עוצמה: RMS של הקטעים הרועשים (קירוב פשוט ל-LUFS)
     loud = env > np.percentile(env, 30)
     cur = 20 * np.log10(rms(out[loud]) if loud.any() else rms(out))
-    return out * 10 ** ((target_db - 3 - cur) / 20)
+    out *= np.float32(10 ** ((target_db - 3 - cur) / 20))
+    return out
 
 
 def limiter(st, ceiling=0.89):
@@ -229,27 +238,29 @@ def mix(voice, tracks, lead, style, accomp_db=0.0, voice_db=0.0, reverb=1.0, ste
     """voice: מונו מעובד. tracks: [(spec, buf)]. lead: שניות מבוא לפני השירה."""
     n = max(len(t[1]) for t in tracks) if tracks else len(voice) + int(lead * SR)
     n = max(n, len(voice) + int(lead * SR) + SR)
-    v = process_voice(voice.astype(np.float64))
-    vbuf = np.zeros(n)
+    v = process_voice(voice.astype(np.float32))
+    vbuf = np.zeros(n, np.float32)
     s = int(lead * SR)
     vbuf[s:s + len(v)] = v * 10 ** (voice_db / 20)
     vr = rms(v[np.abs(v) > 0.02]) if np.any(np.abs(v) > 0.02) else rms(v)
 
-    acc = np.zeros((n, 2))
+    acc = np.zeros((n, 2), np.float32)
     for spec, buf, *_ in tracks:
         gl, gr = pan_gains(spec.get("pan", 0))
         inst = spec.get("instrument")
         if buf.ndim == 2:
             # כלי שהוקלט בסטריאו (פסנתר): שומרים על הרוחב האמיתי, המיקום קובע את האיזון
-            b2 = np.zeros((n, 2))
+            b2 = np.zeros((n, 2), np.float32)
             b2[:min(n, len(buf))] = buf[:n]
             m = b2.mean(axis=1)
             r = rms(m[np.abs(m) > 1e-4]) if np.any(np.abs(m) > 1e-4) else 1.0
             b2 *= spec.get("volume", 0.7) / r
             acc[:, 0] += b2[:, 0] * gl * 1.414
             acc[:, 1] += b2[:, 1] * gr * 1.414
+            if inst == "drums":
+                acc += room(b2.mean(axis=1)) * 0.22          # צליל של חדר
             continue
-        b = np.zeros(n)
+        b = np.zeros(n, np.float32)
         b[:min(n, len(buf))] = buf[:n]
         r = rms(b[np.abs(b) > 1e-4]) if np.any(np.abs(b) > 1e-4) else 1.0
         b = b / r * spec.get("volume", 0.7)
@@ -272,14 +283,14 @@ def mix(voice, tracks, lead, style, accomp_db=0.0, voice_db=0.0, reverb=1.0, ste
         duck = 1 - 0.25 * np.clip(venv / (vr + 1e-9), 0, 1)
         acc *= duck[:, None]
     rv = style.get("reverb", 0.2) * reverb
-    vst = np.stack([vbuf, vbuf], axis=1) * 0.707
+    vst = (np.stack([vbuf, vbuf], axis=1) * 0.707).astype(np.float32)
     voices = harmony if isinstance(harmony, (list, tuple)) else ([harmony] if harmony is not None else [])
     pans = (0.35, -0.35)
     for hi, hv in enumerate(voices):
-        h = process_voice(hv.astype(np.float64))
+        h = process_voice(hv.astype(np.float32))
         h *= 10 ** (-6 / 20) * (vr / max(rms(h[np.abs(h) > 0.02]) if np.any(np.abs(h) > 0.02) else 1, 1e-9))
         h *= 10 ** (voice_db / 20)
-        hb = np.zeros(n)
+        hb = np.zeros(n, np.float32)
         d = s + int((0.018 + 0.009 * hi) * SR)      # השהיה קטנה - נשמע כמו זמר נוסף
         hb[d:d + len(h)] = h[: max(0, min(len(h), n - d))]
         gl, gr = pan_gains(pans[hi % 2])
