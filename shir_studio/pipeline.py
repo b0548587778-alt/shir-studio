@@ -51,6 +51,8 @@ class Song:
         self.last_tracks = None
         self.last_lead = 0.0
         self.last_stems = None
+        self.keep_stems = False       # קבצי קול וליווי נפרדים - רק כשמבקשים (חוסך זיכרון)
+        self._last_make = None
 
     def prepare(self, progress, settings=None):
         """שלבים שלא תלויים בסגנון - נעשים פעם אחת לכל שיר."""
@@ -114,10 +116,15 @@ class Song:
         tracks, lead = render(self.analysis, style, progress=lambda p: progress(55 + p * 0.3, None))
         progress(88, "מערבב את הקול והליווי...")
         style = dict(style, _tempo=float(self.analysis.tempo) if self.analysis.steady else 90.0)
-        out, stems = mix(self.tuned, tracks, lead, style, accomp_db=st.accomp_db,
-                         voice_db=st.voice_db, reverb=st.reverb / 100, stems=True,
-                         harmony=self.harmony, choir=st.choir)
-        self.last_tracks, self.last_lead, self.last_stems = tracks, lead, stems
+        res = mix(self.tuned, tracks, lead, style, accomp_db=st.accomp_db,
+                  voice_db=st.voice_db, reverb=st.reverb / 100, stems=self.keep_stems,
+                  harmony=self.harmony, choir=st.choir)
+        out, stems = res if self.keep_stems else (res, None)
+        self._last_make = (style, st)
+        # שומרים רק את רשימת התווים (לקובץ MIDI) - לא את הצליל של כל כלי, כדי לפנות זיכרון
+        self.last_tracks = [(spec, None, events) for spec, _, events in tracks]
+        del tracks
+        self.last_lead, self.last_stems = lead, stems
         progress(100, None)
         return out
 
@@ -184,6 +191,12 @@ class Song:
 
     def export_extras(self, folder, base):
         """קבצים נפרדים לקול ולליווי (WAV) וקובץ MIDI."""
+        if self.last_stems is None and self._last_make:
+            self.keep_stems = True                     # מכינים שוב, הפעם עם קול וליווי נפרדים
+            try:
+                self.make(self._last_make[0], lambda p, m=None: None, self._last_make[1])
+            finally:
+                self.keep_stems = False
         paths = []
         for name, data in (self.last_stems or {}).items():
             p = os.path.join(folder, f"{base} - {name}.wav")

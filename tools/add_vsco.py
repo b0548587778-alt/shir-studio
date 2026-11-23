@@ -38,6 +38,7 @@ INSTRUMENTS = {
     "marimba": ("Marimba.sfz", 2.0, 1, 0.002, 0.6),
     "glockenspiel": ("Glockenspiel.sfz", 2.5, 1, 0.002, 1.5),
     "bells": ("TubularBells.sfz", 4.0, 1, 0.002, 2.0),
+    "timpani": ("Timpani.sfz", 3.0, 2, 0.002, 1.0),
 }
 NOTE = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 

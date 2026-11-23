@@ -9,8 +9,8 @@
 |---|---|---|---|
 | קוד התוכנה עצמו | נכתב במיוחד: ניקוי רעשים, זיהוי גובה צליל (YIN), תיקון זיופים (PSOLA), זיהוי סולם, קצב ואקורדים, עיבוד וערבוב | שלך | כן |
 | צלילי כלי הנגינה והמקהלה | הקלטות אמיתיות מתוך FluidR3_GM מאת Frank Wen (קובץ shir_studio/samples/pack.npz) | MIT | כן - חובה לצרף את הודעת הרישיון (מצורפת למטה) |
-| פסנתר, גיטרה קלאסית וקלרינט | UprightPianoKW, SpanishClassicalGuitar, Clarinet מאתר FreePats (freepats.zenvoid.org) | CC0 (נחלת הכלל) | כן |
-| כינור, מיתרים, צ'לו, חצוצרה, טרומבון, חליל, קונטרבס, נבל, אבוב, בסון, קרן יער, מרימבה, פעמוני זכוכית ופעמונים | VS Chamber Orchestra: Community Edition (VSCO-2-CE) מאת Versilian Studios | CC0 (נחלת הכלל) | כן |
+| פסנתר, גיטרה קלאסית, קלרינט ואקורדיון כפתורים | UprightPianoKW, SpanishClassicalGuitar, Clarinet, Button Accordion HN מאתר FreePats (freepats.zenvoid.org) | CC0 (נחלת הכלל) | כן |
+| כינור, מיתרים, צ'לו, חצוצרה, טרומבון, חליל, קונטרבס, נבל, אבוב, בסון, קרן יער, מרימבה, פעמוני זכוכית, פעמונים וטימפני | VS Chamber Orchestra: Community Edition (VSCO-2-CE) מאת Versilian Studios | CC0 (נחלת הכלל) | כן |
 | ערכת התופים | MuldjordKit מאת Lars Muldjord (גרסת FreePats) | CC-BY 4.0 | כן - חובה לציין קרדיט (מצורף למטה) |
 | קול הבס "דום" בסגנון הווקאלי | נוצר בקוד עצמו (סינתזה) | שלך | כן |
 | סמל התוכנה | צויר בקוד | שלך | כן |
