@@ -15,7 +15,22 @@ def _symbol(c, up):
     return s
 
 
-def sheet_data(song, title="השיר שלי"):
+def stanzas(lyrics):
+    """מילות השיר כרשימת בתים: שורה ריקה מפרידה בין בית לבית."""
+    out, cur = [], []
+    for line in str(lyrics or "").replace("\r", "").split("\n"):
+        line = line.strip()
+        if line:
+            cur.append(line)
+        elif cur:
+            out.append(cur)
+            cur = []
+    if cur:
+        out.append(cur)
+    return out
+
+
+def sheet_data(song, title="השיר שלי", lyrics=""):
     """מה שכתוב בדף: סולם, קצב, והאקורדים תיבה אחרי תיבה, מחולקים לבית ולפזמון.
     האקורדים כתובים כפי שהם נשמעים - כולל העברת הסולם ועליית הסולם בסוף."""
     from .music.arrange import MOD_UP
@@ -55,7 +70,7 @@ def sheet_data(song, title="השיר שלי"):
         info += [f"קצב: ⁦{int(round(a.tempo))} BPM⁩", f"משקל: ⁦{'6/8' if getattr(a, 'compound', False) else str(a.meter) + '/4'}⁩"]
     else:
         info.append("קצב חופשי - כל אקורד נמשך כשתי שניות")
-    return {"title": title, "info": "   ·   ".join(info), "sections": sections}
+    return {"title": title, "info": "   ·   ".join(info), "sections": sections, "lyrics": stanzas(lyrics)}
 
 
 def as_text(data):
@@ -67,6 +82,10 @@ def as_text(data):
         for i in range(0, len(bars), PER_ROW):
             lines.append("| " + " | ".join(bars[i:i + PER_ROW]) + " |")
         lines.append("")
+    if data.get("lyrics"):
+        lines.append("[מילות השיר]")
+        for st in data["lyrics"]:
+            lines += st + [""]
     return "\n".join(lines)
 
 
@@ -122,5 +141,23 @@ def write_pdf(path, data):
                 p.drawText(rect, int(Qt.AlignCenter), bar)
             y += bh
         y += 26
+    if data.get("lyrics"):                                   # מילות השיר - אחרי האקורדים, בית אחרי בית
+        lh = 40
+        if y + 60 + 3 * lh > H - 40:
+            w.newPage()
+            y = 0
+        text(y, 44, "מילות השיר", font(13, True), Qt.AlignRight, "#24466b")
+        y += 56
+        for st in data["lyrics"]:
+            if y + min(len(st), 4) * lh > H - 40:            # לא משאירים שורה בודדת של בית בתחתית הדף
+                w.newPage()
+                y = 0
+            for line in st:
+                if y + lh > H - 40:
+                    w.newPage()
+                    y = 0
+                text(y, lh, line, font(14), Qt.AlignRight)
+                y += lh
+            y += 22
     text(H - 30, 30, f"הודפס מתוך {APP_NAME}", font(9), color="#8a94a0")
     p.end()

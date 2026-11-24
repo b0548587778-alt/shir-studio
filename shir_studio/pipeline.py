@@ -261,6 +261,26 @@ class Song:
                 self.keep_stems = False
         return self.last_stems or {}
 
+    def stems_in_sung_key(self, progress=None):
+        """הקול והליווי בנפרד - בסולם שבו הזמר שר במקור (בלי העברת סולם ובלי עליית הסולם בסוף).
+        כך מי ששר שוב על הליווי שר באותו סולם כמו ההקלטה הקיימת, והעברת הסולם לא נעשית פעמיים."""
+        import dataclasses
+        if not self._last_make:
+            return {}
+        style, st = self._last_make
+        plain = dataclasses.replace(st, transpose=0, modulate=False)
+        if plain == st:
+            return self.stems(progress)
+        self.keep_stems = True
+        try:
+            self.make(style, progress or (lambda p, m=None: None), plain)
+            return self.last_stems or {}
+        finally:
+            self.keep_stems = False
+            self.last_stems = None
+            self._last_make = (style, st)
+            self._apply(st)                            # הניתוח חוזר להגדרות של השיר המוכן
+
     def export_extras(self, folder, base):
         """קבצים נפרדים לקול ולליווי (WAV) וקובץ MIDI."""
         self.stems()

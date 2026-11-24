@@ -12,12 +12,37 @@ def _sd():
         raise AudioError("לא הצלחתי לגשת לכרטיס הקול של המחשב.\nהפעל מחדש את המחשב ונסה שוב.")
 
 
+CLIP = 0.985              # מעל זה כרטיס הקול כבר 'חותך' את הצליל
+
+
+def mic_verdict(peak, loud, floor):
+    """בדיקת מיקרופון. peak: השיא שנמדד, loud: העוצמה בזמן השירה, floor: העוצמה כששקט (רעש הרקע).
+    מחזיר (מצב, הסבר): silent / quiet / loud / noisy / good."""
+    if loud < 0.0015:
+        return "silent", "לא שומע אותך בכלל.\nבדוק שהמיקרופון מחובר, ושהוא לא מושתק."
+    if peak >= CLIP:
+        return "loud", "חזק מדי - הקול נחתך ויישמע צרוד.\nהתרחק מעט מהמיקרופון, או הנמך את עוצמת המיקרופון במחשב."
+    if loud < 0.02:
+        return "quiet", "חלש מדי.\nהתקרב למיקרופון (כ-15 ס\"מ), או הגבר את עוצמת המיקרופון במחשב."
+    if floor > 0.012 and floor > loud * 0.25:
+        return "noisy", "יש רעש רקע חזק (מאוורר, מזגן, רחוב).\nכדאי לסגור חלון או לכבות את מה שמרעיש, ולשיר קרוב יותר."
+    return "good", "מצוין! העוצמה מתאימה, אפשר להקליט."
+
+
+def clipped_share(data):
+    """איזה חלק מההקלטה 'נחתך' (חזק מדי)."""
+    data = np.asarray(data)
+    return float(np.mean(np.abs(data) >= CLIP)) if len(data) else 0.0
+
+
 class Recorder:
     def __init__(self):
         self._chunks = []
         self._stream = None
         self._drained = 0
         self.level = 0.0
+        self.peak = 0.0               # השיא של החלק האחרון שהוקלט
+        self.clips = 0                # כמה חלקים הגיעו לקצה (הקלטה חזקה מדי)
 
     def reset(self):
         """מתחילים את ההקלטה מחדש מהרגע הזה (אחרי הספירה לאחור)."""
@@ -42,6 +67,9 @@ class Recorder:
             mono = indata.mean(axis=1).copy()
             self._chunks.append(mono)
             self.level = float(np.sqrt(np.mean(mono ** 2)))
+            self.peak = float(np.max(np.abs(mono))) if len(mono) else 0.0
+            if self.peak >= CLIP:
+                self.clips += 1
 
         try:
             self._stream = sd.InputStream(samplerate=SR, channels=1, dtype="float32", callback=cb)
@@ -73,6 +101,8 @@ class Overdub:
         self._pos = 0
         self._latency = 0.0
         self.level = 0.0
+        self.peak = 0.0
+        self.clips = 0
 
     def reset(self):
         pass                                   # כאן הכול נשמר - החיתוך נעשה לפי הזמן
@@ -95,6 +125,9 @@ class Overdub:
             mono = indata[:, 0].copy()
             self._chunks.append(mono)
             self.level = float(np.sqrt(np.mean(mono ** 2)))
+            self.peak = float(np.max(np.abs(mono))) if len(mono) else 0.0
+            if self.peak >= CLIP:
+                self.clips += 1
 
         try:
             self._stream = sd.Stream(samplerate=SR, channels=(1, 2), dtype="float32", callback=cb)

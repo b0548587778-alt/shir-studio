@@ -54,20 +54,43 @@ def analysis_marks(x, f0):
     return np.array(marks), np.array(periods), v
 
 
+TAPS = 16                 # אורך מסנן ההזזה (דגימות)
+PHASES = 64               # דיוק ההזזה: 1/64 של דגימה
+
+
+@lru_cache(maxsize=1)
+def _frac_filters():
+    """מסננים להזזת קטע בשבר של דגימה (sinc עם חלון קייזר). בלי זה כל מחזור ממוקם בדיוק של דגימה שלמה,
+    וה'רעידה' הזעירה הזו נשמעת כצרידות - שכבת רעש מתחת לקול."""
+    j = TAPS // 2 - np.arange(TAPS)                               # המרחק של כל דגימה מהנקודה המבוקשת
+    out = np.zeros((PHASES, TAPS))
+    for p in range(PHASES):
+        t = j - p / PHASES
+        k = np.sinc(t) * np.kaiser(2 * TAPS + 1, 8.0)[np.clip(np.round(t + TAPS).astype(int), 0, 2 * TAPS)]
+        out[p] = k / k.sum()
+    out.setflags(write=False)
+    return out
+
+
 def shift(x: np.ndarray, f0: np.ndarray, semitones: np.ndarray) -> np.ndarray:
-    """semitones: תיקון בחצאי טונים לכל פריים של 10ms (0 = ללא שינוי)."""
+    """semitones: תיקון בחצאי טונים לכל פריים של 10ms (0 = ללא שינוי).
+    המרווח בין המחזורים בפלט נגזר מהמרווח האמיתי שנמדד בהקלטה (ולא מהערכה), וכל מחזור ממוקם בדיוק
+    של שבר דגימה. כך קטע שלא מתוקן יוצא זהה למקור, וקטע שמתוקן נשאר נקי - בלי צרידות."""
     x = np.asarray(x, dtype=np.float64)
     n = len(x)
     marks, periods, v = analysis_marks(x, f0)
     ratio = 2 ** (_per_sample(semitones, n) / 12)
+    filt = _frac_filters()
+    half = TAPS // 2
+    xp = np.concatenate([np.zeros(half), x, np.zeros(half + 1)])   # שוליים למסנן ההזזה
     out = np.zeros(n + 4 * SR // 100)
     wsum = np.zeros_like(out)
     s = float(marks[0])
     k = 0
     nm = len(marks)
+    was_voiced = False
     while s < n:
-        si = int(s)
-        while k + 1 < nm and abs(marks[k + 1] - si) < abs(marks[k] - si):
+        while k + 1 < nm and abs(marks[k + 1] - s) < abs(marks[k] - s):
             k += 1
         a = marks[k]
         P = periods[k]
@@ -75,16 +98,38 @@ def shift(x: np.ndarray, f0: np.ndarray, semitones: np.ndarray) -> np.ndarray:
         Pi = int(P)
         L = 2 * Pi + 1
         lo = a - Pi
-        seg = np.zeros(L)
+        if not voiced or not was_voiced:
+            s = float(a)                    # מה שאינו צליל (עיצורים, נשימה, שקט) ותחילת כל צליל - בדיוק במקומם
+        was_voiced = voiced
+        si = int(np.floor(s))
+        ph = int(round((s - si) * PHASES))
+        if ph == PHASES:
+            si, ph = si + 1, 0
         s0, s1 = max(0, lo), min(n, lo + L)
-        seg[s0 - lo:s1 - lo] = x[s0:s1]
+        if ph == 0:                         # מיקום בדגימה שלמה - הקטע מועתק כמו שהוא
+            seg = np.zeros(L)
+            seg[s0 - lo:s1 - lo] = x[s0:s1]
+        elif lo >= 0 and lo + L <= n:       # הזזה בשבר דגימה: seg[i] = x(lo + i - ph/PHASES)
+            seg = np.correlate(xp[lo: lo + L + TAPS - 1], filt[ph], "valid")
+        else:
+            ext = np.zeros(L + TAPS - 1)
+            e0, e1 = max(0, lo - half), min(n, lo + L + half - 1)
+            ext[e0 - (lo - half): e1 - (lo - half)] = x[e0:e1]
+            seg = np.correlate(ext, filt[ph], "valid")
         w = _hann(L)
         o = si - Pi
         d0, d1 = max(0, o), min(len(out), o + L)
-        out[d0:d1] += (seg * w)[d0 - o:d1 - o]
-        wsum[d0:d1] += w[d0 - o:d1 - o]
-        step = P / ratio[si] if voiced else P
+        if d1 > d0:
+            out[d0:d1] += (seg * w)[d0 - o:d1 - o]
+            wsum[d0:d1] += w[d0 - o:d1 - o]
+        if voiced:
+            # המרחק עד המחזור הבא כפי שנמדד בהקלטה עצמה; בסוף צליל - לפי גובה הצליל שזוהה
+            nxt = marks[k + 1] - a if (k + 1 < nm and periods[k + 1] != UNVOICED_P) else P
+            if not 0.7 * P <= nxt <= 1.4 * P:
+                nxt = P
+            step = nxt / ratio[min(max(si, 0), n - 1)]
+        else:
+            step = P
         s += max(step, 8)
     out = out[:n] / np.maximum(wsum[:n], 0.25) * np.minimum(wsum[:n] / 0.25, 1)
-    # שמירת מעטפת העוצמה המקורית בערך
     return out.astype(np.float32)
