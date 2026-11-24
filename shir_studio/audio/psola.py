@@ -89,9 +89,19 @@ def shift(x: np.ndarray, f0: np.ndarray, semitones: np.ndarray) -> np.ndarray:
     k = 0
     nm = len(marks)
     was_voiced = False
-    while s < n:
+    placed = -1                             # הקטע האחרון שהונח (קטע שאינו צליל מונח פעם אחת בלבד)
+    for _ in range(2 * nm + n // 8 + 16):   # גבול בטיחות - הלולאה תמיד מסתיימת
+        if s >= n:
+            break
         while k + 1 < nm and abs(marks[k + 1] - s) < abs(marks[k] - s):
             k += 1
+        if k == placed and not (v[min(marks[k], n - 1)] and periods[k] != UNVOICED_P):
+            # הקטע הזה כבר במקומו, והבא רחוק (צליל שמתחיל באיחור) - ממשיכים אליו ולא חוזרים על אותו קטע
+            if k + 1 >= nm:
+                break
+            k += 1
+            s = float(marks[k])
+        placed = k
         a = marks[k]
         P = periods[k]
         voiced = v[min(a, n - 1)] and P != UNVOICED_P

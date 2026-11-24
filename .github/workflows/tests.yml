@@ -30,3 +30,6 @@ jobs:
           pip install -r requirements.txt pytest
       - name: Tests
         run: python -m pytest -q tests
+      - name: Self test (the same one the installer build runs)
+        timeout-minutes: 8
+        run: python -m shir_studio --selftest
