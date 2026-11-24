@@ -34,6 +34,11 @@ def selftest():
     assert separate.available(), "separation model or onnxruntime missing"
     voc, acc = separate.separate(y[: SR * 8])            # הפרדת קול: המודל נטען ורץ גם בתוכנה הבנויה
     assert voc.shape == acc.shape == y[: SR * 8].shape and np.isfinite(voc).all()
+    assert separate.stems_available(), "drum / bass separation models missing"
+    parts = separate.separate_stems(y[: SR * 4])         # הפרדה לכלים: גם מודל התופים ומודל הבס נטענים ורצים
+    assert set(parts) == set(separate.STEM_NAMES) and all(np.isfinite(v).all() for v in parts.values())
+    from .audio import stretch
+    assert len(stretch.change(y[: SR * 2], 2, 0.9)) == int(round(SR * 2 / 0.9))
     import sounddevice  # noqa: F401  בודק שכרטיס הקול נטען
     print("SELFTEST OK")
 

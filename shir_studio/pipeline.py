@@ -60,6 +60,7 @@ class Song:
         self.last_lead = 0.0
         self.last_stems = None
         self.keep_stems = False       # קבצי קול וליווי נפרדים - רק כשמבקשים (חוסך זיכרון)
+        self.backing = None           # פלייבק מוכן ששרו עליו: הוא הליווי, והתוכנה לא מנגנת כלים
         self._last_make = None
 
     def prepare(self, progress, settings=None):
@@ -136,7 +137,12 @@ class Song:
         return dataclasses.replace(st, meter=int(m)) if (m in (3, 6) and st.meter == 4) else st
 
     def make(self, style, progress, settings=None):
+        import dataclasses
         st = self._style_meter(style, settings or Settings())
+        if self.backing is not None:
+            # שרים על פלייבק: הוא נשאר בסולם ובמבנה שלו, ולכן הקול לא עובר סולם ולא 'עולה' בסוף
+            st = dataclasses.replace(st, transpose=0, modulate=False)
+            style = {"id": style.get("id"), "name": "פלייבק", "reverb": 0.2, "accomp_db": -3, "tracks": []}
         if self.analysis is None or self._prep != st.prep_key():
             self.prepare(progress, st)
         self._apply(st)
@@ -151,16 +157,19 @@ class Song:
         if st.harmony != "off":
             progress(50, "מוסיף קול שני...")
         self._make_harmony(st)
-        progress(55, "מוסיף ליווי...")
-        from .music.styles import apply_swaps
-        style = apply_swaps(style, st.swaps)
-        tracks, lead = render(self.analysis, style, progress=lambda p: progress(55 + p * 0.3, None))
+        if self.backing is not None:
+            tracks, lead = [], 0.0
+        else:
+            progress(55, "מוסיף ליווי...")
+            from .music.styles import apply_swaps
+            style = apply_swaps(style, st.swaps)
+            tracks, lead = render(self.analysis, style, progress=lambda p: progress(55 + p * 0.3, None))
         progress(88, "מערבב את הקול והליווי...")
         style = dict(style, _tempo=float(self.analysis.tempo) if self.analysis.steady else 90.0)
         res = mix(self.tuned, tracks, lead, style, accomp_db=st.accomp_db,
                   voice_db=st.voice_db, reverb=st.reverb / 100, stems=self.keep_stems,
                   harmony=self.harmony, choir=st.choir, tone=st.voice_tone, space=st.space,
-                  loudness=st.loudness)
+                  loudness=st.loudness, backing=self.backing)
         out, stems = res if self.keep_stems else (res, None)
         self._last_make = (style, st)
         # שומרים רק את רשימת התווים (לקובץ MIDI) - לא את הצליל של כל כלי, כדי לפנות זיכרון

@@ -44,7 +44,7 @@ SF2 version by the FreePats project. Licensed under Creative Commons Attribution
 (https://creativecommons.org/licenses/by/4.0/). The samples were trimmed and converted to mono.
 
 ---
-## מודל הפרדת הקול (רישיון MIT - חובה לתת קרדיט)
+## מודלי הפרדת הקול והכלים (רישיון MIT - חובה לתת קרדיט)
 Vocal separation model: "UVR-MDX-NET Voc FT" from the Ultimate Vocal Remover project
 (https://github.com/Anjok07/ultimatevocalremovergui), by Anjok07 and aufr33, based on the MDX-Net
 architecture (KUIELab / Woosung Choi) and on vocal models by KimberleyJSN. The UVR project publishes its
@@ -52,4 +52,10 @@ models under the MIT License and asks third-party applications to credit UVR and
 File: `shir_studio/models/vocals.onnx` (unmodified;
 SHA-256 534b2070fcc7df514b13ef660dc8cbb328679c2374d04354a5c42bb14ecce111).
 
-The model runs with ONNX Runtime (https://onnxruntime.ai), Copyright (c) Microsoft Corporation, MIT License.
+Drum and bass separation models: "kuielab_a_drums" and "kuielab_a_bass" by KUIELab (Minseok Kim, Woosung Choi
+and colleagues, Korea University), from the "KUIELab-MDX-Net" music demixing project
+(https://github.com/kuielab/mdx-net-submission, MIT License), as distributed with Ultimate Vocal Remover.
+Files: `shir_studio/models/drums.onnx` (SHA-256 40f586b7091934dd6f5563f0cba8f14bad57ce88440da1098bf388ea716c2901)
+and `shir_studio/models/bass.onnx` (SHA-256 0c3e77b9963185b1ea6bb46a4b8924137d9370fc1ccdefec7b1b416ef550dcaa), unmodified.
+
+The models run with ONNX Runtime (https://onnxruntime.ai), Copyright (c) Microsoft Corporation, MIT License.

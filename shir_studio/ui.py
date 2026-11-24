@@ -58,6 +58,8 @@ class MainWindow(QMainWindow):
         self._saved_raw = None
         self._pending_key = None
         self._record = True
+        self.backing = None           # פלייבק ששרים עליו (אז הוא הליווי של השיר)
+        self._playback = None
         self.styles = load_styles()
         self.prefs = prefs_mod.load()
         self.settings = prefs_mod.personal_settings(self.prefs)
@@ -95,7 +97,7 @@ class MainWindow(QMainWindow):
         h.open_project.connect(self.open_project)
         h.batch.connect(self.batch_process)
         h.medley.connect(self.medley)
-        h.separate.connect(self.separate_voice)
+        h.separate.connect(self.open_tools)
         h.check_update.connect(self.check_update)
         r.stop.connect(self.stop_recording)
         r.cancel.connect(self.cancel_recording)
@@ -155,6 +157,9 @@ class MainWindow(QMainWindow):
         self.go_home()
 
     def choose_style(self):
+        if self.backing is not None and self.result is not None:
+            self._info("סגנון ליווי", "בשיר הזה הליווי הוא הפלייבק שבחרת, ולכן אין סגנון להחליף.")
+            return
         self.stop_playing()
         self.stack.setCurrentWidget(self.style_page)
 
@@ -219,7 +224,7 @@ class MainWindow(QMainWindow):
         if self.recorder:
             self.recorder.stop()
         self._end_backup()
-        if self.rec_mode == "new":
+        if self.rec_mode in ("new", "playback"):
             self.go_home()
         else:
             self._back_to_song()
@@ -235,7 +240,7 @@ class MainWindow(QMainWindow):
         if mode == "punch":
             self._finish_punch(data[int(self.rec_pre * SR):])
             return
-        if mode == "overdub":
+        if mode in ("overdub", "playback"):
             data = data[int(self.rec_pre * SR):]
         if len(data) < SR * 2:
             self._end_backup()
@@ -251,6 +256,10 @@ class MainWindow(QMainWindow):
         self._end_backup()
         if mode == "overdub":
             self._finish_overdub(data)
+            return
+        if mode == "playback":
+            self.process(np.ascontiguousarray(data, dtype=np.float32), backing=self._playback)
+            self._playback = None
             return
         self.process(data)
         if self.home.metro_on.isChecked():                 # שרו עם מטרונום - הקצב ידוע
@@ -309,10 +318,12 @@ class MainWindow(QMainWindow):
         self.raw_id = len(self.raws) - 1
         self.original = data
         self.song = Song(data, grid=grid)
+        self.song.backing = self.backing
         self._orig_play = None
 
-    def process(self, data):
-        """שיר חדש."""
+    def process(self, data, backing=None):
+        """שיר חדש. backing: פלייבק ששרו עליו - הוא יהיה הליווי, בלי בחירת סגנון."""
+        self.backing = backing
         self.raws = []
         self._set_raw(data)
         self.result = None
@@ -321,7 +332,10 @@ class MainWindow(QMainWindow):
         if st.tempo_mode == "manual" and not self.home.metro_on.isChecked():
             st.tempo_mode = "auto"
         self.history = History()
-        self.choose_style()
+        if backing is not None:
+            self.make_song()
+        else:
+            self.choose_style()
 
     def _grid(self):
         a = self.song.analysis if self.song else None
@@ -336,6 +350,9 @@ class MainWindow(QMainWindow):
     # ---------- חיתוך ----------
     def trim(self):
         if self.original is None:
+            return
+        if self.backing is not None:
+            self.error("אי אפשר לחתוך שיר שהוקלט על פלייבק - השירה צריכה להישאר במקומה מול הנגינה.")
             return
         self.stop_playing()
         dlg = TrimDialog(self, self.original, play=self._play, stop=self.stop_playing)
@@ -554,7 +571,9 @@ class MainWindow(QMainWindow):
         self.work.bar.setValue(100)
         hint = f"סגנון: {st['name']}"
         info = self.song.info()
-        if not info["steady"]:
+        if self.backing is not None:
+            hint = "ליווי: הפלייבק שבחרת"
+        elif not info["steady"]:
             hint += "\nהשיר מושר בקצב חופשי, לכן הליווי רך ובלי תופים."
         elif getattr(self.song.analysis, "auto_waltz", False):
             hint += "\nהשיר זוהה כוואלס (3/4). לא מתאים? אפשר לשנות את המשקל ב'מתקדם'."
@@ -600,6 +619,7 @@ class MainWindow(QMainWindow):
             data, grid = self.raws[rid]
             self.raw_id, self.original, self._orig_play = rid, data, None
             self.song = Song(data, grid=grid)
+            self.song.backing = self.backing
             self._pending_key = state.get("key_index", 0)
         self.settings = settings_from_dict(state["settings"])
         self.style_page.set_current(state["style"])
@@ -772,6 +792,7 @@ class MainWindow(QMainWindow):
         self._open_loaded(raw, settings, style_id, meta)
 
     def _open_loaded(self, raw, settings, style_id, meta):
+        self.backing = None
         self.raws = []
         self._set_raw(raw)
         self.result = None
@@ -872,57 +893,185 @@ class MainWindow(QMainWindow):
 
     # ---------- גרסה חדשה ----------
     # ---------- הפרדת קול משיר מוכן ----------
-    def separate_voice(self, path=None):
-        """שיר מוכן (שירה + כלי נגינה) -> קובץ של השירה וקובץ של הנגינה, ואפשר להמשיך עם השירה לליווי חדש."""
+    def open_tools(self):
+        from .audio import separate as sep
+        from .toolsview import ToolsDialog
+        dlg = ToolsDialog(self, stems=sep.stems_available())
+        if not dlg.exec() or not dlg.action:
+            return
+        kind = dlg.action[0]
+        if kind == "separate":
+            self.separate_voice(mode=dlg.action[1])
+        elif kind == "shift":
+            self.shift_playback(semitones=dlg.action[1], tempo=dlg.action[2])
+        elif kind == "sing":
+            self.sing_on_playback()
+
+    def _pick_audio(self, title, many=False):
+        start = QStandardPaths.writableLocation(QStandardPaths.MusicLocation)
+        flt = AUDIO_FILTER + ";;כל הקבצים (*.*)"
+        if many:
+            return QFileDialog.getOpenFileNames(self, title, start, flt)[0]
+        return QFileDialog.getOpenFileName(self, title, start, flt)[0]
+
+    def separate_voice(self, path=None, mode="two"):
+        """שיר מוכן (שירה + כלי נגינה) -> קבצים נפרדים. mode: two = שירה ונגינה, stems = גם תופים ובס,
+        vocal = ממשיכים מיד לגרסה ווקאלית. path: קובץ אחד, או רשימת קבצים (ואז רק שומרים)."""
         from .audio import separate as sep
         from .audio.fileio import load_stereo
-        if not sep.available():
+        ok = sep.stems_available() if mode == "stems" else sep.available()
+        if not ok:
             self.error("הפרדת הקול לא זמינה בהתקנה הזו.\nהתקן מחדש את התוכנה מקובץ ההתקנה העדכני.")
             return
-        if not path:
-            start = QStandardPaths.writableLocation(QStandardPaths.MusicLocation)
-            path, _ = QFileDialog.getOpenFileName(self, "בחר שיר מוכן להפרדה", start,
-                                                  AUDIO_FILTER + ";;כל הקבצים (*.*)")
-        if not path:
+        paths = [path] if isinstance(path, str) else list(path or [])
+        if not paths:
+            paths = self._pick_audio("בחר שיר מוכן להפרדה (אפשר כמה)", many=True)
+        if not paths:
             return
         try:
-            mix = load_stereo(path)
+            first = load_stereo(paths[0])                    # בודקים כבר עכשיו שהקובץ הראשון נפתח
         except AudioError as e:
             self.error(str(e))
             return
-        if len(mix) > SR * 60 * 15:
-            self.error("הקובץ ארוך מדי.\nאפשר להפריד שיר של עד 15 דקות.")
-            return
-        minutes = max(1, int(round(len(mix) / SR / 60)))
-        self.work.begin(f"מפריד את השירה מהנגינה...\n(בערך {minutes} דקות - תלוי במחשב)")
+        self.work.begin("מפריד את השירה מהנגינה...\n(כמה דקות לכל שיר - תלוי במחשב)")
         self.stack.setCurrentWidget(self.work)
-        base = os.path.splitext(os.path.basename(path))[0]
         folder, fmt, artist = self._docs("הפרדת קול"), self.save_fmt, self.prefs.get("artist", "")
+        limit = SR * 60 * 15
 
         def job(p):
-            voice, music = sep.separate(mix, progress=lambda pct, m=None: p(2 + pct * 0.93, None))
+            saved, failed, voice = [], [], None
             os.makedirs(folder, exist_ok=True)
-            out = []
-            for name, data in (("שירה", voice), ("נגינה", music)):
-                dst = os.path.join(folder, f"{base} - {name}.{fmt}")
-                save(dst, data, tags={"title": f"{base} - {name}", "artist": artist})
-                out.append(dst)
+            for i, src in enumerate(paths):
+                name = os.path.basename(src)
+                rep_ = lambda pct, m=None, i=i: p(2 + (i * 100 + pct) * 0.96 / len(paths), None)
+                if len(paths) > 1:
+                    p(2 + i * 96 / len(paths), f"שיר {i + 1} מתוך {len(paths)}: {name}")
+                try:
+                    mix = first if i == 0 else load_stereo(src)
+                    if len(mix) > limit:
+                        raise AudioError("הקובץ ארוך מדי (עד 15 דקות).")
+                    if mode == "stems":
+                        parts = sep.separate_stems(mix, progress=rep_)
+                    else:
+                        v, m = sep.separate(mix, progress=rep_)
+                        parts = {"שירה": v, "נגינה": m}
+                    base = os.path.splitext(name)[0]
+                    for part, data in parts.items():
+                        dst = os.path.join(folder, f"{base} - {part}.{fmt}")
+                        save(dst, data, tags={"title": f"{base} - {part}", "artist": artist})
+                        saved.append(dst)
+                    if i == 0:
+                        voice = parts["שירה"]
+                except AudioError as e:
+                    failed.append((name, str(e).splitlines()[0]))
+                except MemoryError:
+                    raise
+                except Exception:
+                    log_error(traceback.format_exc())
+                    failed.append((name, "ההפרדה לא הצליחה"))
+            if not saved:
+                raise AudioError("ההפרדה לא הצליחה.\n" + "\n".join(f"{n}: {why}" for n, why in failed))
             p(100, None)
-            return voice, out
-        self._run(job, self._separated, back=self.go_home, fail_text="ההפרדה לא הצליחה.\nנסה קובץ אחר.")
+            return voice, saved, failed
+        self._run(job, lambda res: self._separated(res, mode, len(paths)), back=self.go_home,
+                  fail_text="ההפרדה לא הצליחה.\nנסה קובץ אחר.")
 
-    def _separated(self, res):
-        voice, paths = res
+    def _separated(self, res, mode="two", count=1):
+        voice, paths, failed = res
         self.stack.setCurrentWidget(self.home)
-        self._reveal(paths[0])
-        text = ("נשמרו שני קבצים:\n\n" + "\n".join(paths) +
-                "\n\nלהמשיך עם השירה, ולהוסיף לה ליווי חדש?")
-        if self._ask("ההפרדה מוכנה", text, "כן, ליווי חדש", "לא, זה מספיק"):
-            mono = voice.mean(axis=1).astype(np.float32)
-            if np.max(np.abs(mono)) < 1e-3:
+        mono = voice.mean(axis=1).astype(np.float32) if voice is not None else None
+        has_voice = mono is not None and np.max(np.abs(mono)) >= 1e-3
+        if mode == "vocal" and count == 1:
+            if not has_voice:
                 self.error("לא מצאתי שירה בשיר הזה.")
                 return
+            # גרסה ווקאלית: ממשיכים ישר עם השירה לסגנון 'ווקאלי - בלי כלים'
             self.process(mono)
+            for i, st in enumerate(self.styles):
+                if st.get("voices") or st["id"].endswith("vocal"):
+                    self.style_page.set_current(i)
+                    break
+            self.make_song()
+            return
+        self._reveal(paths[0])
+        text = f"נשמרו {len(paths)} קבצים בתיקייה:\n{os.path.dirname(paths[0])}"
+        if count == 1:
+            text = "נשמרו הקבצים:\n\n" + "\n".join(paths)
+        if failed:
+            text += "\n\nלא הצליחו:\n" + "\n".join(f"{n} - {why}" for n, why in failed)
+        if count > 1 or not has_voice:
+            self._info("ההפרדה מוכנה", text)
+        elif self._ask("ההפרדה מוכנה", text + "\n\nלהמשיך עם השירה, ולהוסיף לה ליווי חדש?",
+                       "כן, ליווי חדש", "לא, זה מספיק"):
+            self.process(mono)
+
+    # ---------- פלייבק: סולם וקצב, ושירה על פלייבק ----------
+    def shift_playback(self, path=None, semitones=0, tempo=100):
+        """שומר עותק של קובץ נגינה בסולם ובקצב אחרים."""
+        from .audio import stretch
+        from .audio.fileio import load_stereo
+        if semitones == 0 and tempo == 100:
+            self._info("פלייבק", "לא נבחר שינוי.\nבחר בכמה חצאי טונים להעלות או להוריד, או קצב אחר.")
+            return
+        path = path or self._pick_audio("בחר קובץ נגינה (פלייבק)")
+        if not path:
+            return
+        try:
+            audio = load_stereo(path)
+        except AudioError as e:
+            self.error(str(e))
+            return
+        self.work.begin("משנה את הסולם והקצב של הפלייבק...")
+        self.stack.setCurrentWidget(self.work)
+        base = os.path.splitext(os.path.basename(path))[0]
+        note = []
+        if semitones:
+            note.append(f"{abs(semitones)} חצאי טונים {'למעלה' if semitones > 0 else 'למטה'}")
+        if tempo != 100:
+            note.append(f"קצב {tempo}%")
+        folder, fmt = self._docs("פלייבק"), self.save_fmt
+        dst = os.path.join(folder, f"{base} ({', '.join(note)}).{fmt}")
+
+        def job(p):
+            out = stretch.change(audio, semitones, tempo / 100.0, progress=lambda pct: p(2 + pct * 0.9, None))
+            os.makedirs(folder, exist_ok=True)
+            save(dst, out, tags={"title": os.path.splitext(os.path.basename(dst))[0]})
+            p(100, None)
+            return dst
+        self._run(job, self._shifted, back=self.go_home, fail_text="השינוי לא הצליח.\nנסה קובץ אחר.")
+
+    def _shifted(self, dst):
+        self.stack.setCurrentWidget(self.home)
+        self._reveal(dst)
+        self._info("הפלייבק מוכן", f"הפלייבק נשמר בסולם ובקצב החדשים:\n\n{dst}")
+
+    def sing_on_playback(self, path=None):
+        """בוחרים קובץ נגינה, שרים עליו עם אוזניות, והתוכנה מעבדת את הקול ומערבבת אותו עם הפלייבק."""
+        from .audio.fileio import load_stereo
+        path = path or self._pick_audio("בחר קובץ נגינה (פלייבק) לשיר עליו")
+        if not path:
+            return
+        try:
+            backing = load_stereo(path)
+        except AudioError as e:
+            self.error(str(e))
+            return
+        if len(backing) > SR * 60 * 15:
+            self.error("הקובץ ארוך מדי.\nאפשר לשיר על פלייבק של עד 15 דקות.")
+            return
+        if not self._ask("שירה על פלייבק", "תשמע את הפלייבק ותשיר עליו.\n\n"
+                         "חשוב: שים אוזניות, כדי שהנגינה לא תיכנס למיקרופון.\n"
+                         "כשסיימת לשיר - לחץ 'סיום'.", "יש לי אוזניות - מתחילים", "ביטול"):
+            return
+        self.stop_playing()
+        self._playback = backing
+        self.recorder = Overdub(np.concatenate([np.zeros((int(PRE_ROLL * SR), 2), dtype=np.float32), backing]))
+        try:
+            self.recorder.start()
+        except AudioError as e:
+            self.error(str(e))
+            return
+        self._begin_recording("playback", "שיר עם הפלייבק", "מתכוננים...", PRE_ROLL, len(backing) / SR, PRE_ROLL)
 
     def check_update(self):
         self.home.b_update.setEnabled(False)
