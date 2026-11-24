@@ -30,6 +30,10 @@ def selftest():
     p = os.path.join(tempfile.gettempdir(), "shir_selftest.mp3")
     save(p, y)
     assert len(load(p)) > SR * 10
+    from .audio import separate
+    assert separate.available(), "separation model or onnxruntime missing"
+    voc, acc = separate.separate(y[: SR * 8])            # הפרדת קול: המודל נטען ורץ גם בתוכנה הבנויה
+    assert voc.shape == acc.shape == y[: SR * 8].shape and np.isfinite(voc).all()
     import sounddevice  # noqa: F401  בודק שכרטיס הקול נטען
     print("SELFTEST OK")
 

@@ -37,3 +37,5 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\ShirStudio.exe"; Tasks: des
 
 [Run]
 Filename: "{app}\ShirStudio.exe"; Description: "פתח את {#MyAppName} עכשיו"; Flags: nowait postinstall skipifsilent
+; עדכון מתוך התוכנה (התקנה שקטה): התוכנה נפתחת מחדש בסיום
+Filename: "{app}\ShirStudio.exe"; Flags: nowait; Check: WizardSilent

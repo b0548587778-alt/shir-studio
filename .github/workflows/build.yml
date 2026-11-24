@@ -25,7 +25,7 @@ jobs:
       - name: Tests
         run: python -m pytest -q tests
       - name: Build exe
-        run: pyinstaller --noconfirm --windowed --name ShirStudio --icon assets\icon.ico --add-data "shir_studio\styles;shir_studio\styles" --add-data "assets;assets" --add-data "shir_studio\samples;shir_studio\samples" --exclude-module tkinter run.py
+        run: pyinstaller --noconfirm --windowed --name ShirStudio --icon assets\icon.ico --add-data "shir_studio\styles;shir_studio\styles" --add-data "assets;assets" --add-data "shir_studio\samples;shir_studio\samples" --add-data "shir_studio\models;shir_studio\models" --collect-binaries onnxruntime --exclude-module tkinter run.py
       - name: Self test of built exe
         shell: pwsh
         run: |

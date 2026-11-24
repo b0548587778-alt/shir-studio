@@ -16,7 +16,7 @@ from .audio.devices import Recorder, Player, Metronome, Overdub
 from .pipeline import Song, Settings
 from .advanced import AdvancedDialog
 from .music.styles import load_styles
-from .log import log_error
+from .log import log_error, log_dir
 from .project import save_project, load_project, settings_to_dict, settings_from_dict, History, batch, EXT
 from .pitchview import PitchDialog
 from .trimview import TrimDialog, PunchDialog
@@ -95,6 +95,7 @@ class MainWindow(QMainWindow):
         h.open_project.connect(self.open_project)
         h.batch.connect(self.batch_process)
         h.medley.connect(self.medley)
+        h.separate.connect(self.separate_voice)
         h.check_update.connect(self.check_update)
         r.stop.connect(self.stop_recording)
         r.cancel.connect(self.cancel_recording)
@@ -870,6 +871,59 @@ class MainWindow(QMainWindow):
                   fail_text="לא הצלחתי להכין את המחרוזת.\nנסה שוב.")
 
     # ---------- גרסה חדשה ----------
+    # ---------- הפרדת קול משיר מוכן ----------
+    def separate_voice(self, path=None):
+        """שיר מוכן (שירה + כלי נגינה) -> קובץ של השירה וקובץ של הנגינה, ואפשר להמשיך עם השירה לליווי חדש."""
+        from .audio import separate as sep
+        from .audio.fileio import load_stereo
+        if not sep.available():
+            self.error("הפרדת הקול לא זמינה בהתקנה הזו.\nהתקן מחדש את התוכנה מקובץ ההתקנה העדכני.")
+            return
+        if not path:
+            start = QStandardPaths.writableLocation(QStandardPaths.MusicLocation)
+            path, _ = QFileDialog.getOpenFileName(self, "בחר שיר מוכן להפרדה", start,
+                                                  AUDIO_FILTER + ";;כל הקבצים (*.*)")
+        if not path:
+            return
+        try:
+            mix = load_stereo(path)
+        except AudioError as e:
+            self.error(str(e))
+            return
+        if len(mix) > SR * 60 * 15:
+            self.error("הקובץ ארוך מדי.\nאפשר להפריד שיר של עד 15 דקות.")
+            return
+        minutes = max(1, int(round(len(mix) / SR / 60)))
+        self.work.begin(f"מפריד את השירה מהנגינה...\n(בערך {minutes} דקות - תלוי במחשב)")
+        self.stack.setCurrentWidget(self.work)
+        base = os.path.splitext(os.path.basename(path))[0]
+        folder, fmt, artist = self._docs("הפרדת קול"), self.save_fmt, self.prefs.get("artist", "")
+
+        def job(p):
+            voice, music = sep.separate(mix, progress=lambda pct, m=None: p(2 + pct * 0.93, None))
+            os.makedirs(folder, exist_ok=True)
+            out = []
+            for name, data in (("שירה", voice), ("נגינה", music)):
+                dst = os.path.join(folder, f"{base} - {name}.{fmt}")
+                save(dst, data, tags={"title": f"{base} - {name}", "artist": artist})
+                out.append(dst)
+            p(100, None)
+            return voice, out
+        self._run(job, self._separated, back=self.go_home, fail_text="ההפרדה לא הצליחה.\nנסה קובץ אחר.")
+
+    def _separated(self, res):
+        voice, paths = res
+        self.stack.setCurrentWidget(self.home)
+        self._reveal(paths[0])
+        text = ("נשמרו שני קבצים:\n\n" + "\n".join(paths) +
+                "\n\nלהמשיך עם השירה, ולהוסיף לה ליווי חדש?")
+        if self._ask("ההפרדה מוכנה", text, "כן, ליווי חדש", "לא, זה מספיק"):
+            mono = voice.mean(axis=1).astype(np.float32)
+            if np.max(np.abs(mono)) < 1e-3:
+                self.error("לא מצאתי שירה בשיר הזה.")
+                return
+            self.process(mono)
+
     def check_update(self):
         self.home.b_update.setEnabled(False)
         self.home.b_update.setText("בודק...")
@@ -884,11 +938,48 @@ class MainWindow(QMainWindow):
         if latest is None:
             self._info("בדיקת גרסה", "לא הצלחתי לבדוק.\nייתכן שאין חיבור לאינטרנט במחשב הזה.")
         elif update.newer(latest, APP_VERSION):
-            if self._ask("יש גרסה חדשה", f"יש גרסה חדשה: {latest}\n(אצלך מותקנת גרסה {APP_VERSION})\n\n"
-                         "לפתוח את דף ההורדה?", "פתח את דף ההורדה", "לא עכשיו"):
-                QDesktopServices.openUrl(QUrl(update.PAGE))
+            if not update.can_install():
+                if self._ask("יש גרסה חדשה", f"יש גרסה חדשה: {latest}\n(אצלך מותקנת גרסה {APP_VERSION})\n\n"
+                             "לפתוח את דף ההורדה?", "פתח את דף ההורדה", "לא עכשיו"):
+                    QDesktopServices.openUrl(QUrl(update.PAGE))
+            elif self._ask("יש גרסה חדשה", f"יש גרסה חדשה: {latest}\n(אצלך מותקנת גרסה {APP_VERSION})\n\n"
+                           "להוריד ולהתקין אותה עכשיו?\nהתוכנה תיסגר, תתעדכן ותיפתח מחדש.",
+                           "עדכן עכשיו", "לא עכשיו"):
+                self.install_update()
         else:
             self._info("בדיקת גרסה", f"הגרסה שלך ({APP_VERSION}) היא העדכנית ביותר.")
+
+    def install_update(self):
+        """מוריד את הגרסה החדשה, בודק שהקובץ מקורי, מתקין וסוגר את התוכנה."""
+        self.stop_playing()
+        self.work.begin("מוריד את הגרסה החדשה...")
+        self.stack.setCurrentWidget(self.work)
+        folder = os.path.join(log_dir(), "update")
+
+        def job(p):
+            info = update.release_info()
+            if info is None:
+                raise update.UpdateError("לא מצאתי קובץ התקנה לגרסה החדשה.")
+            return update.download(info, folder, progress=lambda pct: p(pct, None))
+        self.upd_worker = self._keep(Worker(job, "העדכון לא הצליח.\nאפשר להוריד את הגרסה החדשה מדף ההורדה."))
+        self.upd_worker.progress.connect(self.work.set_progress)
+        self.upd_worker.finished_ok.connect(self._run_installer)
+        self.upd_worker.failed.connect(self._update_failed)
+        self.upd_worker.start()
+
+    def _update_failed(self, message):
+        self.go_home()
+        if self._ask("העדכון לא הצליח", f"{message}\n\nלפתוח את דף ההורדה?", "פתח את דף ההורדה", "לא עכשיו"):
+            QDesktopServices.openUrl(QUrl(update.PAGE))
+
+    def _run_installer(self, path):
+        try:
+            update.install(path)
+        except Exception:
+            log_error(traceback.format_exc())
+            self._update_failed("לא הצלחתי להפעיל את קובץ ההתקנה.")
+            return
+        self.close()                       # שיר שלא נשמר נשאר בגיבוי האוטומטי ויוצע לשחזור אחרי העדכון
 
     # ---------- שחזור אחרי סגירה לא צפויה ----------
     def offer_recovery(self):
