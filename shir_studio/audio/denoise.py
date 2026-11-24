@@ -7,6 +7,7 @@ from .fileio import SR
 
 NFFT = 2048
 HOP = 512
+MAX_CUT_DB = 24.0         # בכמה דציבלים הרעש מונמך לכל היותר
 
 
 def _highpass(x, cutoff=70.0):
@@ -93,7 +94,7 @@ def denoise(x: np.ndarray, strength: float = 1.0, progress=None) -> np.ndarray:
     if progress:
         progress(40)
     # שלב 2: ניקוי כל קטע
-    floor = 10 ** (-(18.0 * strength) / 20)  # הנחתה מקסימלית של 18dB
+    floor = 10 ** (-(MAX_CUT_DB * strength) / 20)  # ההנחתה המקסימלית של הרעש
     y = np.zeros(n, np.float32)
     for s0, e0, a0, a1 in _blocks(n):
         Z = _spec(x[a0:a1])

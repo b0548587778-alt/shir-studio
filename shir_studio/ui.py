@@ -9,10 +9,10 @@ from PySide6.QtCore import Qt, QTimer, QStandardPaths, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QMainWindow, QStackedWidget, QFileDialog
 
-from . import APP_NAME, APP_VERSION, prefs as prefs_mod, recovery, update
+from . import APP_NAME, APP_VERSION, prefs as prefs_mod, recovery, update, shortcuts
 from .audio import edit
 from .audio.fileio import load, save, AudioError, SR
-from .audio.devices import Recorder, Player, Metronome, Overdub
+from .audio.devices import Recorder, Player, Metronome, Overdub, clipped_share
 from .pipeline import Song, Settings
 from .advanced import AdvancedDialog
 from .music.styles import load_styles
@@ -24,7 +24,7 @@ from .medleyview import MedleyDialog
 from .screens import common
 from .screens.common import STYLE, Worker, fmt_time
 from .screens.home import HomeScreen
-from .screens.record import RecordScreen, TITLE as REC_TITLE
+from .screens.record import RecordScreen, TITLE as REC_TITLE, TOO_LOUD, NOT_HEARD
 from .screens.styles import StyleScreen
 from .screens.work import WorkScreen
 from .screens.done import DoneScreen
@@ -59,6 +59,8 @@ class MainWindow(QMainWindow):
         self._pending_key = None
         self._record = True
         self.backing = None           # פלייבק ששרים עליו (אז הוא הליווי של השיר)
+        self.lyrics = ""              # מילות השיר
+        self._best_take = False       # שרים שוב כדי לבחור את המיטב משתי ההקלטות
         self._playback = None
         self.styles = load_styles()
         self.prefs = prefs_mod.load()
@@ -78,6 +80,7 @@ class MainWindow(QMainWindow):
         for w in (self.home, self.rec, self.style_page, self.work, self.done):
             self.stack.addWidget(w)
         self._connect()
+        shortcuts.install(self)
         for i, st in enumerate(self.styles):
             if st["id"] == self.prefs.get("style"):
                 self.style_page.set_current(i)
@@ -99,6 +102,8 @@ class MainWindow(QMainWindow):
         h.medley.connect(self.medley)
         h.separate.connect(self.open_tools)
         h.check_update.connect(self.check_update)
+        h.mic_check.connect(self.mic_check)
+        h.shortcuts.connect(lambda: shortcuts.show_help(self))
         r.stop.connect(self.stop_recording)
         r.cancel.connect(self.cancel_recording)
         s.make.connect(self.make_song)
@@ -127,6 +132,9 @@ class MainWindow(QMainWindow):
         d.new_song.connect(self.new_song)
         d.advanced.connect(lambda: self.open_advanced(remake=True))
         d.tempo.connect(self.scale_tempo)
+        d.practice.connect(self.practice)
+        d.lyrics.connect(self.edit_lyrics)
+        d.best_take.connect(lambda: self.overdub(best=True))
 
     # ---------- הודעות (פונקציות נפרדות - כדי שהבדיקות יוכלו להחליף אותן) ----------
     def error(self, text):
@@ -189,6 +197,9 @@ class MainWindow(QMainWindow):
         self.countdown_end = time.time() + countdown
         self.rec_start = None
         self._last_flush = 0.0
+        self._clips, self._loud_until, self._heard = 0, 0.0, 0.0
+        self.rec.set_warning(None)
+        self.rec.set_lyrics(self.lyrics if mode in ("overdub", "punch") else "")
         self.rec.title.setText(wait_title)
         self.rec.time.setText(str(int(np.ceil(countdown))))
         self.stack.setCurrentWidget(self.rec)
@@ -207,11 +218,31 @@ class MainWindow(QMainWindow):
             self.rec.title.setText(self.rec_title)
         s = now - self.rec_start
         self.rec.time.setText(fmt_time(s))
+        self._mic_warning(now, s)
         if self.backup and now - self._last_flush > 1.0:      # גיבוי שוטף - שהקלטה לא תאבד אם משהו נסגר
             self._last_flush = now
             self.backup.write(self.recorder.drain())
         if s >= self.rec_limit:
             self.stop_recording()
+
+    def _mic_warning(self, now, elapsed):
+        """בזמן ההקלטה: מזהירים מיד כשהקול נחתך (חזק מדי), או כשהמיקרופון לא שומע כלום."""
+        r = self.recorder
+        clips = getattr(r, "clips", 0)
+        if clips > self._clips:
+            self._clips, self._loud_until = clips, now + 2.5
+        self._heard = max(self._heard, r.level)
+        if now < self._loud_until:
+            self.rec.set_warning(TOO_LOUD)
+        elif self.rec_mode == "new" and elapsed > 5 and self._heard < 0.004:   # (מול ליווי יש מבוא שבו שותקים)
+            self.rec.set_warning(NOT_HEARD)
+        else:
+            self.rec.set_warning(None)
+
+    def mic_check(self):
+        from .micview import MicDialog
+        self.stop_playing()
+        MicDialog(self).exec()
 
     def _end_backup(self):
         if self.backup:
@@ -254,6 +285,12 @@ class MainWindow(QMainWindow):
             return
         self._keep_recording(data)
         self._end_backup()
+        if mode == "new" and clipped_share(data) > 0.002 and not self._ask(
+                "ההקלטה חזקה מדי", "בחלק מההקלטה הקול היה חזק מדי ונחתך, ולכן הוא עלול להישמע צרוד.\n"
+                "מומלץ להקליט שוב, קצת יותר רחוק מהמיקרופון.\n(ההקלטה הזו נשמרה בתיקיית 'הקלטות'.)",
+                "המשך עם ההקלטה הזו", "הקלט שוב"):
+            self.start_recording()
+            return
         if mode == "overdub":
             self._finish_overdub(data)
             return
@@ -329,6 +366,7 @@ class MainWindow(QMainWindow):
         self.result = None
         st = self.settings
         st.key, st.chords_text, st.sections, st.note_edits = None, "", None, None
+        self._load_lyrics("")
         if st.tempo_mode == "manual" and not self.home.metro_on.isChecked():
             st.tempo_mode = "auto"
         self.history = History()
@@ -424,20 +462,31 @@ class MainWindow(QMainWindow):
         self.make_song()
 
     # ---------- שירה מחדש על הליווי המוכן ----------
-    def overdub(self):
+    def overdub(self, best=False):
+        """best: אחרי ההקלטה התוכנה בוחרת לכל משפט את הביצוע הנקי יותר - מההקלטה הקודמת או מהחדשה."""
         if self.song is None or self.result is None:
             return
-        if not self._ask("שיר שוב עם הליווי",
-                         "תשמע את הליווי המוכן ותשיר איתו את כל השיר מחדש.\n"
-                         "השירה יוצאת מדויקת יותר בקצב, והשיר נשמע נקי יותר.\n\n"
-                         "חשוב: שים אוזניות, כדי שהליווי לא ייכנס למיקרופון.",
-                         "יש לי אוזניות - מתחילים", "ביטול"):
+        if best:
+            ok = self._ask("שיר שוב - ובחר את המיטב",
+                           "תשמע את הליווי המוכן ותשיר איתו את כל השיר שוב.\n"
+                           "אחר כך התוכנה תשווה משפט אחרי משפט, ותיקח מכל הקלטה את המשפטים שיצאו נקיים יותר.\n"
+                           "אפשר לחזור על זה כמה פעמים - בכל פעם נשמר הטוב ביותר.\n\n"
+                           "חשוב: שים אוזניות, כדי שהליווי לא ייכנס למיקרופון.",
+                           "יש לי אוזניות - מתחילים", "ביטול")
+        else:
+            ok = self._ask("שיר שוב עם הליווי",
+                           "תשמע את הליווי המוכן ותשיר איתו את כל השיר מחדש.\n"
+                           "השירה יוצאת מדויקת יותר בקצב, והשיר נשמע נקי יותר.\n\n"
+                           "חשוב: שים אוזניות, כדי שהליווי לא ייכנס למיקרופון.",
+                           "יש לי אוזניות - מתחילים", "ביטול")
+        if not ok:
             return
+        self._best_take = bool(best)
         self.stop_playing()
         self.work.begin("מכין את הליווי...")
         self.stack.setCurrentWidget(self.work)
         song = self.song
-        self._run(lambda p: song.stems(p), self._start_overdub, back=self._back_to_song)
+        self._run(lambda p: song.stems_in_sung_key(p), self._start_overdub, back=self._back_to_song)
 
     def _start_overdub(self, stems):
         acc = stems.get("ליווי")
@@ -464,11 +513,80 @@ class MainWindow(QMainWindow):
             self.error("לא שמעתי שירה בהקלטה.\nנסה שוב.")
             self._back_to_song()
             return
+        if self._best_take:
+            self._choose_best(np.ascontiguousarray(voice, dtype=np.float32))
+            return
         grid = self._grid()
         self._pin_key()
         self._set_raw(np.ascontiguousarray(voice, dtype=np.float32), grid)
         self.settings = dataclasses.replace(self.settings, chords_text="", sections=None, note_edits=None)
         self.make_song()
+
+    def _choose_best(self, take):
+        """משווה את ההקלטה החדשה לקודמת, משפט אחרי משפט, ומשלב את הטובים משתיהן."""
+        from .audio import takes
+        from .music import theory
+        old, a = self.original, self.song.analysis
+        scale = theory.scale_pcs(a.tonic, a.mode) if a is not None else None
+        f0 = a.f0 if a is not None else None
+        self.work.begin("משווה בין ההקלטות...")
+        self.stack.setCurrentWidget(self.work)
+        self._run(lambda p: takes.best_of(old, take, scale, f0, p), self._best_chosen, back=self._back_to_song,
+                  fail_text="לא הצלחתי לשלב בין ההקלטות.\nהשיר נשאר כמו שהיה.")
+
+    def _best_chosen(self, res):
+        from .audio import takes
+        mixed, picks = res
+        new, kept = takes.summary(picks)
+        if new == 0:
+            self._back_to_song()
+            self._info("בחירת המיטב", "בכל המשפטים ההקלטה הקודמת יצאה נקייה יותר (או שווה),\nולכן השיר נשאר כמו שהיה.")
+            return
+        self._info("בחירת המיטב", f"מההקלטה החדשה נלקחו {new} משפטים, ומהקודמת נשארו {kept}.\n"
+                   "לא מרוצה? 'ביטול שינוי' מחזיר את ההקלטה הקודמת.")
+        grid = self._grid()
+        self._pin_key()
+        self._set_raw(mixed, grid)
+        self.settings = dataclasses.replace(self.settings, note_edits=None)   # המשפטים אותם משפטים - האקורדים נשארים
+        self.make_song()
+
+    # ---------- מצב תרגול ומילות השיר ----------
+    def practice(self):
+        if not (self.song and self.song.analysis is not None and self.original is not None):
+            return
+        from .practiceview import PracticeDialog
+        self.stop_playing()
+        tuned = self.song.tuned if self.song.tuned is not None and len(self.song.tuned) == len(self.original) else None
+        dlg = PracticeDialog(self, self.original, self.song.analysis, tuned, play=self._play, stop=self.stop_playing)
+        if dlg.exec() and dlg.punch:
+            self.start_punch(dlg.punch)
+
+    def edit_lyrics(self):
+        from .lyricsview import LyricsDialog
+        dlg = LyricsDialog(self, self.lyrics)
+        if dlg.exec():
+            self.set_lyrics(dlg.text())
+
+    def _load_lyrics(self, text):
+        """המילים של השיר שנפתח עכשיו (שיר חדש = בלי מילים)."""
+        self.lyrics = text
+        self.done.b_lyrics.setText("📝  מילים ✔" if text else "📝  מילים")
+
+    def set_lyrics(self, text):
+        if text == self.lyrics:
+            return
+        self._load_lyrics(text)
+        self.dirty = self.dirty or self.result is not None
+        if self.song is not None and self.result is not None:            # שהמילים לא יאבדו אם התוכנה נסגרת
+            try:
+                recovery.save_session(self.song.raw, self._session_meta(), False)
+            except Exception:
+                log_error(traceback.format_exc())
+
+    def _session_meta(self):
+        a = self.song.analysis if self.song else None
+        return {"settings": settings_to_dict(self.settings), "style": self.style()["id"],
+                "key_index": a.key_index if a is not None else 0, "lyrics": self.lyrics}
 
     # ---------- הכנת השיר ----------
     def _run(self, fn, done, back=None, fail_text=None):
@@ -544,6 +662,7 @@ class MainWindow(QMainWindow):
             settings.chords_text = ""
         pending, self._pending_key = self._pending_key, None
         raw_changed = self._saved_raw is not song.raw
+        lyrics = self.lyrics
 
         def job(p):
             if pending is not None:
@@ -557,7 +676,7 @@ class MainWindow(QMainWindow):
             out = song.make(st, p, settings)
             # גיבוי אוטומטי של העבודה - אם המחשב נכבה לפני ששמרו, אפשר לשחזר
             recovery.save_session(song.raw, {"settings": settings_to_dict(settings), "style": st["id"],
-                                             "key_index": song.analysis.key_index}, raw_changed)
+                                             "key_index": song.analysis.key_index, "lyrics": lyrics}, raw_changed)
             return out
         self._run(job, lambda r: self._processed(r, st, song))
 
@@ -725,7 +844,7 @@ class MainWindow(QMainWindow):
     def _tags(self, path):
         """פרטי השיר שנכתבים בתוך הקובץ: שם השיר (שם הקובץ) ושם הזמר."""
         return {"title": os.path.splitext(os.path.basename(path))[0], "artist": self.prefs.get("artist", ""),
-                "year": time.strftime("%Y"), "software": f"{APP_NAME} {APP_VERSION}"}
+                "year": time.strftime("%Y"), "software": f"{APP_NAME} {APP_VERSION}", "lyrics": self.lyrics}
 
     @staticmethod
     def _reveal(path):
@@ -750,7 +869,7 @@ class MainWindow(QMainWindow):
         from . import chordsheet
         try:
             title = os.path.splitext(os.path.basename(path))[0]
-            chordsheet.write_pdf(path, chordsheet.sheet_data(self.song, title))
+            chordsheet.write_pdf(path, chordsheet.sheet_data(self.song, title, self.lyrics))
         except Exception:
             log_error(traceback.format_exc())
             self.error("לא הצלחתי לשמור את דף האקורדים.\nבחר מקום אחר ונסה שוב.")
@@ -769,7 +888,7 @@ class MainWindow(QMainWindow):
             path += EXT
         try:
             save_project(path, self.original, self.settings, self.style()["id"],
-                         {"key_index": self.song.analysis.key_index if self.song.analysis else 0})
+                         {"key_index": self.song.analysis.key_index if self.song.analysis else 0, "lyrics": self.lyrics})
         except Exception:
             log_error(traceback.format_exc())
             self.error("לא הצלחתי לשמור את הפרויקט.\nבדוק שיש מקום בדיסק ונסה שוב.")
@@ -798,6 +917,7 @@ class MainWindow(QMainWindow):
         self.result = None
         self.history = History()
         self.settings = settings
+        self._load_lyrics(str(meta.get("lyrics") or ""))
         for i, st in enumerate(self.styles):
             if st["id"] == style_id:
                 self.style_page.set_current(i)
