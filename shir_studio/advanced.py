@@ -152,10 +152,12 @@ class AdvancedDialog(QDialog):
         f.addRow("קצב:", tw)
 
         self.meter = QComboBox()
+        self.meter.addItem("אוטומטי (4/4, או ואלס כשהוא מזוהה)", 0)
         self.meter.addItem("4/4 (רגיל)", 4)
         self.meter.addItem("3/4 (ואלס)", 3)
         self.meter.addItem("6/8 (מתנדנד)", 6)
-        self.meter.setCurrentIndex(max(0, self.meter.findData(settings.meter)))
+        cur = 0 if (settings.meter == 4 and settings.auto_meter) else settings.meter
+        self.meter.setCurrentIndex(max(0, self.meter.findData(cur)))
         f.addRow("משקל:", self.meter)
         self.cpb = QComboBox()
         self.cpb.addItem("שניים בתיבה", 2)
@@ -311,7 +313,7 @@ class AdvancedDialog(QDialog):
             denoise=self.denoise.slider.value(), tune=self.tune.slider.value(),
             key=self._key(), tempo_mode=mode, bpm=bpm,
             modulate=self.modulate.isChecked(), note_edits=o.note_edits,
-            meter=self.meter.currentData(), chords_per_bar=self.cpb.currentData(),
+            meter=self.meter.currentData() or 4, auto_meter=self.meter.currentData() == 0, chords_per_bar=self.cpb.currentData(),
             chords_text=self.chords.toPlainText().strip(), transpose=self.transpose.value(),
             voice_db=self.voice_db.slider.value(), accomp_db=self.accomp_db.slider.value(),
             reverb=self.reverb.slider.value(), harmony=self.harmony.currentData(),

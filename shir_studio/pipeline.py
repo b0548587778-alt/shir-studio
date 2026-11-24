@@ -23,6 +23,7 @@ class Settings:
     tempo_mode: str = "auto"    # auto / manual / free
     bpm: float = 0
     meter: int = 4              # 4, 3 או 6 (= 6/8)
+    auto_meter: bool = True     # כשהמשקל 4: לזהות ואלס (3/4) אוטומטית מהשירה
     chords_per_bar: int = 2     # 1 או 2
     chords_text: str = ""       # אקורדים שהמוזיקאי כתב (ריק = אוטומטי)
     transpose: int = 0          # חצאי טונים
