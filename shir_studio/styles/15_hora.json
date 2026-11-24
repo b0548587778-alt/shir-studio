@@ -4,6 +4,7 @@
  "order": 15,
  "reverb": 0.14,
  "accomp_db": -4,
+ "ending": "hits",
  "tracks": [
   {
    "instrument": "bass",

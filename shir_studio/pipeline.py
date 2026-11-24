@@ -40,6 +40,8 @@ class Settings:
     voice_tone: str = "natural" # אופי הקול: natural / warm / bright / radio
     space: str = "auto"         # גודל האולם של ההדהוד: auto / room / big
     loudness: str = "normal"    # עוצמת השיר המוכן: soft / normal / loud
+    intro: str = "auto"         # הפתיח: auto (לפי הסגנון) / start / chorus / long / short
+    ending: str = "auto"        # הסיום: auto (לפי הסגנון) / full / hits / fade / short
 
     def prep_key(self):
         return (self.denoise,)
@@ -130,6 +132,15 @@ class Song:
         set_key(self.analysis, self.analysis.key_index + 1)
 
     @staticmethod
+    def _open_close(style, st):
+        """הפתיח והסיום שהמשתמש בחר גוברים על אלה של הסגנון."""
+        if st.intro != "auto":
+            style = dict(style, intro_kind=st.intro, intro=True)
+        if st.ending != "auto":
+            style = dict(style, ending=st.ending)
+        return style
+
+    @staticmethod
     def _style_meter(style, st):
         """סגנון שנכתב למשקל מסוים (ואלס = 3/4, ניגון 6/8) קובע את המשקל, אם המשתמש לא בחר אחרת."""
         import dataclasses
@@ -162,7 +173,7 @@ class Song:
         else:
             progress(55, "מוסיף ליווי...")
             from .music.styles import apply_swaps
-            style = apply_swaps(style, st.swaps)
+            style = self._open_close(apply_swaps(style, st.swaps), st)
             tracks, lead = render(self.analysis, style, progress=lambda p: progress(55 + p * 0.3, None))
         progress(88, "מערבב את הקול והליווי...")
         style = dict(style, _tempo=float(self.analysis.tempo) if self.analysis.steady else 90.0)
@@ -196,8 +207,8 @@ class Song:
         a.duration = cut
         progress(60, "מכין האזנה מהירה...")
         from .music.styles import apply_swaps
-        style = apply_swaps(style, st.swaps)
-        style = dict(style, solo=False, ritardando=False)
+        style = self._open_close(apply_swaps(style, st.swaps), st)
+        style = dict(style, solo=False, ritardando=False, ending="short")
         tracks, lead = render(a, style)
         style["_tempo"] = float(a.tempo) if a.steady else 90.0
         voice = self.tuned[: int((cut + 0.5) * 44100)]

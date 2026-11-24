@@ -174,6 +174,17 @@ class AdvancedDialog(QDialog):
             self.space.addItem(name, val)
         self.space.setCurrentIndex(max(0, self.space.findData(settings.space)))
         f.addRow("גודל האולם:", self.space)
+        from .music.arrange import INTROS, ENDINGS
+        self.intro, self.ending = QComboBox(), QComboBox()
+        for box, names, cur in ((self.intro, INTROS, settings.intro), (self.ending, ENDINGS, settings.ending)):
+            box.addItem("לפי הסגנון (רגיל)", "auto")
+            for val, name in names.items():
+                box.addItem(name, val)
+            box.setCurrentIndex(max(0, box.findData(cur)))
+        self.intro.setToolTip("מה הכלי המוביל מנגן לפני שהזמר נכנס")
+        self.ending.setToolTip("איך השיר נגמר אחרי שהשירה מסתיימת")
+        f.addRow("הפתיח:", self.intro)
+        f.addRow("הסיום:", self.ending)
         self.modulate = QCheckBox("עליית סולם (חצי טון) בפזמון האחרון - הקול והליווי עולים יחד")
         self.modulate.setChecked(bool(settings.modulate))
         f.addRow("", self.modulate)
@@ -320,4 +331,5 @@ class AdvancedDialog(QDialog):
             choir=self.choir.isChecked(), sections=self._sections(),
             voice_tone=self.voice_tone.currentData(), space=self.space.currentData(),
             loudness=self.loudness.currentData(),
+            intro=self.intro.currentData(), ending=self.ending.currentData(),
             swaps={k: cb.currentData() for k, cb in self.swaps.items() if cb.currentData() != k} or None)
