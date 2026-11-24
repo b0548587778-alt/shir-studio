@@ -312,7 +312,7 @@ class AdvancedDialog(QDialog):
         return Settings(
             denoise=self.denoise.slider.value(), tune=self.tune.slider.value(),
             key=self._key(), tempo_mode=mode, bpm=bpm,
-            modulate=self.modulate.isChecked(), note_edits=o.note_edits,
+            modulate=self.modulate.isChecked(), note_edits=o.note_edits, tempo_scale=o.tempo_scale,
             meter=self.meter.currentData() or 4, auto_meter=self.meter.currentData() == 0, chords_per_bar=self.cpb.currentData(),
             chords_text=self.chords.toPlainText().strip(), transpose=self.transpose.value(),
             voice_db=self.voice_db.slider.value(), accomp_db=self.accomp_db.slider.value(),
