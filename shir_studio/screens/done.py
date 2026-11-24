@@ -25,6 +25,7 @@ class DoneScreen(QWidget):
     save = Signal()
     new_song = Signal()
     advanced = Signal()
+    tempo = Signal(float)           # 2 = ליווי מהיר פי שניים, 0.5 = איטי פי שניים
 
     def __init__(self):
         super().__init__()
@@ -85,6 +86,12 @@ class DoneScreen(QWidget):
             for c, (b, sig) in enumerate(row):
                 b.clicked.connect(sig)
                 g.addWidget(b, r, c)
+        self.b_faster = small_button("⏩  ליווי מהיר פי 2", "הליווי מנגן לאט מדי ביחס לשיר? כך הוא יכפיל את הקצב")
+        self.b_slower = small_button("⏪  ליווי איטי פי 2", "הליווי רץ מהר מדי ביחס לשיר? כך הוא יחצה את הקצב")
+        self.b_faster.clicked.connect(lambda: self.tempo.emit(2.0))
+        self.b_slower.clicked.connect(lambda: self.tempo.emit(0.5))
+        g.addWidget(self.b_faster, 2, 0, 1, 2)
+        g.addWidget(self.b_slower, 2, 2, 1, 2)
         v.addLayout(g)
         v.addStretch()
         h = QHBoxLayout()

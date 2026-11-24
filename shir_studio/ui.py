@@ -123,6 +123,7 @@ class MainWindow(QMainWindow):
         d.save.connect(self.save_result)
         d.new_song.connect(self.new_song)
         d.advanced.connect(lambda: self.open_advanced(remake=True))
+        d.tempo.connect(self.scale_tempo)
 
     # ---------- הודעות (פונקציות נפרדות - כדי שהבדיקות יוכלו להחליף אותן) ----------
     def error(self, text):
@@ -491,6 +492,24 @@ class MainWindow(QMainWindow):
         if remake and self.song:
             self.make_song()
 
+    def scale_tempo(self, factor):
+        """ליווי מהיר או איטי פי שניים - כשהקצב זוהה בחצי או בכפול ממה שהזמר מרגיש."""
+        a = self.song.analysis if self.song else None
+        if a is None:
+            return
+        if not a.steady:
+            self.error("השיר מושר בקצב חופשי, ואין בו קצב קבוע לשנות.")
+            return
+        st = self.settings
+        if not 50 <= a.tempo * factor <= 230:
+            self.error("הליווי כבר מהיר מאוד." if factor > 1 else "הליווי כבר איטי מאוד.")
+            return
+        if st.tempo_mode == "manual" and st.bpm:
+            self.settings = dataclasses.replace(st, bpm=st.bpm * factor)
+        else:
+            self.settings = dataclasses.replace(st, tempo_scale=st.tempo_scale * factor)
+        self.make_song()
+
     def other_key(self):
         self.make_song(change_key=True)
 
@@ -803,7 +822,8 @@ class MainWindow(QMainWindow):
         settings, fmt = self.settings, self.save_fmt
         self.work.begin("מעבד את השירים...")
         self.stack.setCurrentWidget(self.work)
-        self._run(lambda p: batch(paths, st, settings, folder, fmt, progress=p), self._batch_done)
+        self._run(lambda p: batch(paths, st, settings, folder, fmt, progress=p,
+                                          artist=self.prefs.get("artist", "")), self._batch_done)
 
     def _batch_done(self, results):
         ok = [r for r in results if r[1]]

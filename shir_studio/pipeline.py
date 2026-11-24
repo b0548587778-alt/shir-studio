@@ -24,6 +24,7 @@ class Settings:
     bpm: float = 0
     meter: int = 4              # 4, 3 או 6 (= 6/8)
     auto_meter: bool = True     # כשהמשקל 4: לזהות ואלס (3/4) אוטומטית מהשירה
+    tempo_scale: float = 1.0    # 2 = ליווי מהיר פי שניים מהקצב שזוהה, 0.5 = איטי פי שניים
     chords_per_bar: int = 2     # 1 או 2
     chords_text: str = ""       # אקורדים שהמוזיקאי כתב (ריק = אוטומטי)
     transpose: int = 0          # חצאי טונים
@@ -112,7 +113,7 @@ class Song:
             self.harmony = None
             return
         k = (st.harmony, st.tune, st.transpose, a.tonic, a.mode, a.key_index, len(a.chords),
-             st.chords_text, st.meter, st.tempo_mode, st.bpm) + self._edits_key(st)
+             st.chords_text, st.meter, st.tempo_mode, st.bpm, st.tempo_scale) + self._edits_key(st)
         if k != self._harm_key:
             from .music.harmony import harmony_shift
             from .music.analysis import correction_for

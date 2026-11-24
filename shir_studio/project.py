@@ -88,9 +88,10 @@ def _freeze(state):
     return json.dumps(state, ensure_ascii=False, sort_keys=True)
 
 
-def batch(paths, style, settings, out_folder, fmt="mp3", progress=None, load=None, save=None):
+def batch(paths, style, settings, out_folder, fmt="mp3", progress=None, load=None, save=None, artist=""):
     """מעבד כמה קבצים ברצף. מחזיר רשימת (קובץ, תוצאה או None, שגיאה)."""
     from .audio.fileio import load as _load, save as _save
+    tagged = save is None                    # השמירה הרגילה כותבת את שם השיר והזמר בתוך הקובץ
     load, save = load or _load, save or _save
     results = []
     n = len(paths)
@@ -104,7 +105,10 @@ def batch(paths, style, settings, out_folder, fmt="mp3", progress=None, load=Non
             out = song.make(style, rep, dataclasses.replace(settings, key=None, chords_text=""))
             base = os.path.splitext(os.path.basename(p))[0]
             dst = os.path.join(out_folder, f"{base} - {style.get('name', 'שיר')}.{fmt}")
-            save(dst, out)
+            if tagged:
+                save(dst, out, tags={"title": base, "artist": artist})
+            else:
+                save(dst, out)
             results.append((p, dst, None))
         except Exception as e:                       # שיר אחד שנכשל לא עוצר את כל השאר
             results.append((p, None, str(e) or type(e).__name__))

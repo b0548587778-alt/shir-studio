@@ -206,6 +206,81 @@ def third_below(m, scale):
     return q
 
 
+def step_below(m, scale):
+    """הצליל הקרוב בסולם שמתחת ל-m."""
+    q = m - 1
+    while q % 12 not in scale:
+        q -= 1
+    return q
+
+
+def free_plan(a, style, tonic_chord):
+    """פתיח וסיום לשיר בקצב חופשי (בלי תופים):
+    פתיח - הכלי המוביל מנגן את המשפט הראשון של המנגינה לפני שהזמר נכנס;
+    סיום - הכלי 'עונה' לזמר במשפט האחרון, ואחריו אקורד סיום ארוך.
+    מחזיר dict: lead (שניות לפני השירה), segs (אקורדים), notes (צלילי הכלי המוביל), final (זמן, אורך)."""
+    chords = list(a.chords) or [(0.0, a.duration, tonic_chord)]
+    mel = snap_melody(a, [(nt.start, nt.end, nt.pitch) for nt in a.notes if nt.end - nt.start > 0.08])
+    plan = {"lead": 1.5, "notes": [], "final": None}
+    segs = list(chords)
+    last_voice = max([e for _, e, _ in mel] + [chords[-1][1]])
+    dominant = next((c for c in chords_for(a.tonic, a.mode) if c["degree"] == "V"), None)
+
+    def chords_between(t0, t1, shift):
+        out = [(max(s, t0) + shift, min(e, t1) + shift, c) for s, e, c in chords if s < t1 and e > t0]
+        return out or [(t0 + shift, t1 + shift, tonic_chord)]
+
+    def register(notes):
+        med = np.median([m for _, _, m in notes])
+        return 12 * round((69 - med) / 12)
+
+    first_seg = None
+    if mel and style.get("intro", True):
+        f0 = mel[0][0]
+        end = None
+        for (s1, e1, _), (s2, _, _) in zip(mel, mel[1:]):
+            if e1 - f0 >= 1.5 and (s2 - e1 >= 0.35 or e1 - f0 >= 4.5):
+                end = e1
+                break
+        if end is None and mel[-1][1] - f0 <= 6:
+            end = None                                       # שיר קצרצר - בלי פתיח מנוגן
+        if end is not None and last_voice - f0 > 2.5 * (end - f0):
+            breath = 0.7                                      # נשימה בין הפתיח לכניסה של הזמר
+            shift = -(end - f0 + breath)
+            ph = [n for n in mel if n[0] < end - 0.05]
+            sh = register(ph)
+            plan["notes"] += [(s + shift, (e - s) * 0.95, m + sh, 0.62) for s, e, m in ph]
+            plan["lead"] = max(1.5, -(f0 + shift) + 0.8)
+            intro = chords_between(f0, end, shift)
+            intro[0] = (intro[0][0] - 0.5, intro[0][1], intro[0][2])
+            turn = dominant is not None and chords[0][2].get("root") == tonic_chord["root"]
+            wait = dict(dominant, seventh=10) if turn else chords[0][2]      # אקורד 'מזמין' לפני הכניסה
+            first_seg = intro + [(f0 - breath, chords[0][0], wait)]
+    segs = (first_seg or [(-1.2, chords[0][0], chords[0][2])]) + segs
+    end_t = segs[-1][1]
+    if mel and style.get("solo", True) and last_voice - mel[0][0] > 8:
+        start = None
+        for (s1, e1, _), (s2, _, _) in zip(mel, mel[1:]):
+            if s2 - e1 >= 0.35 and 1.2 <= last_voice - s2 <= 5.0:
+                start = s2                                    # תחילת המשפט האחרון
+        if start is None:
+            start = last_voice - 3.0
+        ph = [n for n in mel if n[0] >= start - 0.02]
+        if ph:
+            shift = (last_voice - start) + 0.5
+            sh = register(ph)
+            plan["notes"] += [(s + shift, (e - s) * 0.95, m + sh, 0.58) for s, e, m in ph]
+            echo = chords_between(start, last_voice, shift)
+            echo[0] = (min(end_t, echo[0][0]), echo[0][1], echo[0][2])
+            segs += echo
+            end_t = max(end_t, last_voice + shift) + 0.15
+    plan["final"] = (end_t, 3.6)
+    segs.append((end_t, end_t + 3.6, tonic_chord))
+    plan["segs"] = segs
+    plan["extra"] = max(0.0, end_t - a.duration)
+    return plan
+
+
 def brass_hits(a, tl, levels, IB, chord_at, last_voice, compound=False):
     """תשובות של קבוצת הנשיפה: 'הרמה' של שני צלילים אל תוך כל פזמון, ו'דקירות' קצרות באמצע הפזמון.
     מחזיר [(מיקום בפעמות, אורך בפעמות, [צלילים], עוצמה)]."""
@@ -349,12 +424,16 @@ def render(a, style, progress=None, rng_seed=7):
         INTRO_MEL = 0
     IB = tl.intro_bars
     meter = tl.meter
+    free = None
+    if not a.steady:
+        free = free_plan(a, style, chords_for(a.tonic, a.mode)[0])
+        tl.lead = free["lead"]
     tp = getattr(a, "transpose", 0)
     compound = bool(getattr(a, "compound", False))
     sub = 3 if compound else 2                       # חלוקת הפעמה
     tonic_chord = chords_for(a.tonic, a.mode)[0]
     rich = style.get("rich_chords", False)
-    total = tl.lead + a.duration + 8.0
+    total = tl.lead + a.duration + 8.0 + (free["extra"] if free else 0.0)
     n = int(total * SR)
     tracks = []
     tun = a.tuning
@@ -525,6 +604,12 @@ def render(a, style, progress=None, rng_seed=7):
                     # בבית: בלי מצילות פתוחות וטמבורין - נשמע רגוע יותר
                     evs = [e for e in evs if e["n"] not in ("open_hat", "tambourine", "crash")]
                 # הפתיח נבנה בהדרגה (קרשנדו) עד הכניסה של הזמר
+                if inst in BASS and end_of_phrase and bar >= IB and not compound and not in_outro \
+                        and style.get("bass_runs", True):
+                    # הבס 'רץ' בסוף כל משפט: שני צלילים עולים אל האקורד הבא
+                    evs = [e for e in evs if e["t"] < meter - 1] + \
+                          [{"t": meter - 1, "n": "run2", "v": 0.7, "d": 0.45},
+                           {"t": meter - 0.5, "n": "run1", "v": 0.78, "d": 0.45}]
                 lift = (0.7 + 0.22 * bar / max(1, IB - 1)) if bar < IB else \
                     (0.86 if lvl == 0 else (1.07 if last_phrase else 1.0))
                 if inst == "drums" and INTRO_MEL and bar == IB - INTRO_MEL and bar > 0:
@@ -557,7 +642,23 @@ def render(a, style, progress=None, rng_seed=7):
                         ch = chord_at(cuts[ci] + 0.02)
                         d = cuts[ci + 1] - cuts[ci]
                         vv = v if ci == 0 else v * 0.8
-                        notes = _note_for(ev["n"], ch, oct_)
+                        if ev["n"] in ("run1", "run2"):
+                            # ריצה אל השורש של האקורד הבא, בצלילי הסולם
+                            sc = set(scale_pcs(a.tonic, a.mode))
+                            nxt = chord_at(tl.beat_time(pos0 + meter) - tl.lead + 0.05)
+                            cur = _note_for("root", ch, oct_)[0]
+                            tgt = cur + ((nxt["root"] - cur) % 12)
+                            if tgt - cur > 6:
+                                tgt -= 12
+                            one = step_below(tgt, sc)
+                            notes = [one if ev["n"] == "run1" else step_below(one, sc)]
+                        else:
+                            notes = _note_for(ev["n"], ch, oct_)
+                        if inst in BASS and lvl == 1 and bar % 2 == 1 and len(notes) == 1 and not in_outro \
+                                and meter - 2 <= ev["t"] < meter - 1 and style.get("bass_runs", True):
+                            top = _note_for("root", ch, oct_)[0] + 12
+                            if top <= 55:
+                                notes = [top]                    # בפזמון: קפיצה לאוקטבה - נותן 'דחיפה'
                         if ev["n"] == "chord":
                             notes = voice_lead(notes, prev_voicing)
                             prev_voicing = notes
@@ -570,7 +671,10 @@ def render(a, style, progress=None, rng_seed=7):
                                 tgt = notes[0] + ((nxt["root"] - notes[0]) % 12)
                                 if tgt - notes[0] > 6:
                                     tgt -= 12
-                                notes = [tgt - 1 if rng.random() < 0.5 else tgt + 1]
+                                # צליל מעבר מהסולם (מלמטה או מלמעלה); כשאין - חצי טון מתחת
+                                sc = set(scale_pcs(a.tonic, a.mode))
+                                near = [q for q in (tgt - 1, tgt + 1, tgt - 2, tgt + 2) if q % 12 in sc]
+                                notes = [near[int(rng.random() < 0.3) % len(near)] if near else tgt - 1]
                         for k, m in enumerate(notes):
                             play(out, inst, m, d, vv, cuts[ci] + tl.lead + k * ev.get("strum", 0.0),
                                  section=True)
@@ -578,10 +682,8 @@ def render(a, style, progress=None, rng_seed=7):
                 if progress and ti == 0:
                     progress(min(95, int(100 * t_bar / max(1, a.duration))))
         else:
-            segs = list(a.chords) or [(0, a.duration, tonic_chord)]
-            segs = [(-1.2, segs[0][0], segs[0][2])] + segs          # מבוא
-            segs.append((segs[-1][1], segs[-1][1] + 3.0, tonic_chord))
-            for s, e, ch in segs:
+            for s, e, ch in free["segs"]:
+                ch = enrich(ch, a.mode, rich)
                 if inst == "drums":
                     continue
                 for ev in tr["seg"]:
@@ -591,8 +693,14 @@ def render(a, style, progress=None, rng_seed=7):
                         play(out, inst, m, d, v, s + tl.lead + ev["t"] + k * ev.get("strum", 0.0))
         tracks.append((tr, out.buf, out.events))
     lead = _lead_instrument(style)
-    if solo or INTRO_MEL:
+    if solo or INTRO_MEL or (free and free["notes"]):
         out = _Track(n)
+        if free:
+            # קצב חופשי: פתיח במנגינה של המשפט הראשון, 'תשובה' לזמר בסוף, והטוניקה עם אקורד הסיום
+            for t0, d, m, v in free["notes"]:
+                play(out, lead, m, max(0.12, d), v, t0 + tl.lead + rng.normal(0, 0.01))
+            ft, fd = free["final"]
+            play(out, lead, 72 + (a.tonic - 72) % 12, fd * 0.9, 0.5, ft + tl.lead + 0.12)
         off = (outro_bars * bar_sec)
         for s0, e0, m in solo:
             t = warp(s0 + off + tl.lead) + rng.normal(0, 0.008)

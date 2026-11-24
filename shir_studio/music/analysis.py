@@ -263,6 +263,20 @@ def _beat_positions(beats, onsets):
     return out
 
 
+def scale_beats(beats, tempo, notes, scale):
+    """המשתמש ביקש ליווי מהיר או איטי פי שניים: מוסיפים פעמה באמצע כל פעמה, או משאירים כל פעמה שנייה
+    (את אלה שעליהן מתחילים הצלילים הארוכים)."""
+    b = np.asarray(beats, dtype=float)
+    if scale >= 2 and len(b) >= 2:
+        out = np.empty(2 * len(b) - 1)
+        out[0::2] = b
+        out[1::2] = (b[:-1] + b[1:]) / 2
+        return out, tempo * 2
+    if scale <= 0.5 and len(b) >= 8:
+        return b[_downbeat(b, notes, 2)::2], tempo / 2
+    return b, tempo
+
+
 def double_time(beats, tempo, onsets):
     """שיר מהיר שזוהה בחצי מהקצב שלו: כשהזמר שר בקביעות גם בין הפעמות, הפעמה האמיתית מהירה פי שניים.
     מחזיר (פעמות, קצב) - כפולים אם צריך."""
@@ -578,7 +592,8 @@ def apply_settings(a, st):
     """מחיל הגדרות מתקדמות של המשתמש על הניתוח האוטומטי."""
     meter = st.meter
     # ואלס שזוהה אוטומטית - כשהמשתמש (או הסגנון) לא קבעו משקל, והקצב הוא זה שזוהה מהשירה
-    a.auto_waltz = bool(meter == 4 and getattr(st, "auto_meter", True) and st.tempo_mode == "auto"
+    scale = float(getattr(st, "tempo_scale", 1.0) or 1.0)
+    a.auto_waltz = bool(meter == 4 and getattr(st, "auto_meter", True) and st.tempo_mode == "auto" and scale == 1.0
                         and a.auto.get("meter") == 3)
     if a.auto_waltz:
         meter = 3
@@ -595,6 +610,8 @@ def apply_settings(a, st):
         a.steady, a.beats, a.tempo = True, manual_grid(a, st.bpm), float(st.bpm)
     else:
         a.steady, a.beats, a.tempo = a.auto["steady"], a.auto["beats"], a.auto["tempo"]
+        if a.steady and scale != 1.0:
+            a.beats, a.tempo = scale_beats(a.beats, a.tempo, a.notes, scale)
     if a.steady:
         a.downbeat = _downbeat(a.beats, a.notes, a.meter)
     # סולם
