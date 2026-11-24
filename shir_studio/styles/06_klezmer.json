@@ -4,6 +4,7 @@
  "order": 6,
  "reverb": 0.2,
  "accomp_db": -4,
+ "ending": "hits",
  "tracks": [
   {
    "instrument": "acoustic_bass",

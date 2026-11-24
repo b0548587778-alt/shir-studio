@@ -124,7 +124,7 @@ def test_ending_roll_final_chord_and_held_lead(song):
     assert held and held[0][0] % 12 == a.tonic and held[0][1] > 1.5      # הכלי המוביל מחזיק את הטוניקה
     # פסנתר פורט את אקורד הסיום מלמטה למעלה
     tracks2, _ = render(a, _style("ניגון שקט עם פסנתר"))
-    piano = _track(tracks2, "piano")[2]
+    piano = [e for e in _track(tracks2, "piano")[2] if e[3] > 0.5]      # בלי ה'טיפוס' העדין שאחרי האקורד
     tf = max(t for t, m, d, v in piano) - 0.2
     fin = sorted((t, m) for t, m, d, v in piano if t > tf)
     assert len(fin) >= 3 and [m for _, m in fin] == sorted(m for _, m in fin) and fin[-1][0] - fin[0][0] > 0.05
