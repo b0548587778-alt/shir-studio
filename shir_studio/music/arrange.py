@@ -7,6 +7,8 @@ from .theory import chords_for, scale_pcs
 
 BASS = {"bass", "acoustic_bass"}
 LEAD_PREF = ("violin", "clarinet", "flute", "trumpet", "accordion", "guitar", "piano")
+BRASS = {"brass", "trumpet", "horn"}                # כלי נשיפה ממתכת
+STRUMMED = {"piano", "guitar", "steel_guitar", "harp"}      # כלים שאקורד הסיום שלהם 'נפרט' מלמטה למעלה
 PHRASE = 8            # תיבות במשפט
 MOD_UP = 1            # עליית סולם בפזמון האחרון: חצי טון
 
@@ -183,6 +185,64 @@ def counter_melody(a, tl, chord_at, rng, start_min, end_max):
     return out
 
 
+def brass_voice(inst, m):
+    """כל צליל של כלי הנשיפה מנוגן בכלי שמתאים לגובה שלו: למעלה חצוצרה, למטה טרומבון -
+    כך הם נשמעים כמו קבוצת נשיפה אמיתית ולא כמו כלי אחד שנמתח מחוץ למנעד שלו."""
+    from . import sampler
+    if inst == "brass" and m > 64 and sampler.has("trumpet"):
+        return "trumpet"
+    if inst == "trumpet" and m < 53 and sampler.has("brass"):
+        return "brass"
+    return inst
+
+
+def third_below(m, scale):
+    """הצליל שנמצא שתי מדרגות מתחת בסולם (טרצה) - לקול שני מתחת למנגינה."""
+    q, steps = m, 0
+    while steps < 2:
+        q -= 1
+        if q % 12 in scale:
+            steps += 1
+    return q
+
+
+def brass_hits(a, tl, levels, IB, chord_at, last_voice, compound=False):
+    """תשובות של קבוצת הנשיפה: 'הרמה' של שני צלילים אל תוך כל פזמון, ו'דקירות' קצרות באמצע הפזמון.
+    מחזיר [(מיקום בפעמות, אורך בפעמות, [צלילים], עוצמה)]."""
+    meter = tl.meter
+    off = (2 / 3) if compound else 0.5
+    out = []
+
+    def tones(ch, lo=60):
+        return sorted(lo + (pc - lo) % 12 for pc in ch["pcs"])
+
+    def lvl(p):
+        return levels[p] if 0 <= p < len(levels) else 0
+
+    bar_sec = tl.period * meter
+    n_bars = int((last_voice - (tl.beat_time(tl.bar0 + IB * meter) - tl.lead)) / bar_sec) + 1
+    for pb in range(n_bars):
+        pos0 = tl.bar0 + (IB + pb) * meter
+        if pos0 + 2 * meter >= len(tl.beats) - 1:
+            break
+        ph, inbar = divmod(pb, PHRASE)
+        t_bar = tl.beat_time(pos0) - tl.lead
+        if inbar == PHRASE - 1 and lvl(ph + 1) == 1 and (lvl(ph) == 0 or ph + 1 == len(levels) - 1) \
+                and t_bar + bar_sec < last_voice:
+            # הרמה אל הפזמון: שני צלילים עולים בסוף התיבה, ואקורד מודגש על הפעמה הראשונה של הפזמון
+            cur = tones(chord_at(t_bar + bar_sec * 0.8))
+            nxt = tones(chord_at(t_bar + bar_sec + 0.05))
+            out.append((pos0 + meter - 1, off * 0.9, [cur[0]], 0.6))
+            out.append((pos0 + meter - 1 + off, (1 - off) * 0.9, [cur[1]], 0.68))
+            out.append((pos0 + meter, 1.6, [nxt[0], nxt[-1] if nxt[-1] != nxt[0] else nxt[0] + 12], 0.8))
+        elif lvl(ph) == 1 and inbar == 3 and t_bar + bar_sec < last_voice:
+            # דקירות באמצע הפזמון: שני אקורדים קצרצרים בסוף התיבה הרביעית
+            ch = tones(chord_at(t_bar + bar_sec * 0.8))
+            for k, v in ((meter - 1, 0.6), (meter - 1 + off, 0.7)):
+                out.append((pos0 + k, 0.3, [ch[0], ch[-1]], v))
+    return out
+
+
 def _lead_instrument(style):
     if style.get("lead"):
         return style["lead"]
@@ -340,7 +400,15 @@ def render(a, style, progress=None, rng_seed=7):
     sing0 = (tl.beat_time(tl.bar0 + IB * tl.meter) - tl.lead) if a.steady else 0.0
     intro_off = INTRO_MEL * bar_sec               # במבוא - האקורדים של תחילת השיר
 
+    # פתיח: בפעמה האחרונה לפני שהזמר נכנס הליווי עובר לדרגה החמישית - 'מזמין' את הכניסה
+    dominant = next((c for c in chords_for(a.tonic, a.mode) if c["degree"] == "V"), None)
+    first_chord = _chord_at(a, 0.05, tonic_chord)
+    turn = (a.steady and dominant is not None and style.get("intro", True)
+            and first_chord.get("root") == tonic_chord["root"])
+
     def chord_at(tv):
+        if turn and sing0 - tl.period * 1.02 <= tv < sing0 - 0.01:
+            return dict(dominant, seventh=10)
         if INTRO_MEL and sing0 - intro_off <= tv < sing0 - 0.01:
             tv += intro_off
         return enrich(_chord_at(a, tv, tonic_chord), a.mode, rich)
@@ -353,8 +421,17 @@ def render(a, style, progress=None, rng_seed=7):
 
     mod_t = getattr(a, "modulate_at", None)
 
-    def play(out, inst, m, d, v, t):
+    final = {}                       # אקורד הסיום: זמן ואורך - לכלי הסולו ולקבוצת הנשיפה
+
+    def play(out, inst, m, d, v, t, section=False):
         up = tp + (MOD_UP if mod_t is not None and t - tl.lead >= mod_t - 0.03 else 0)
+        if inst in BRASS:
+            inst = brass_voice(inst, m + up)
+        if section and inst in BRASS and d >= 0.25:
+            # קבוצת נשיפה: שני נגנים על כל צליל - השני נכנס רגע אחרי ומכוון מעט אחרת
+            out.add(synth.render_note(inst, m + up, d, v, tun) * np.float32(0.78), t, (m + up, d, v))
+            out.add(synth.render_note(inst, m + up, d, v * 0.85, tun + 0.07) * np.float32(0.6), t + 0.014)
+            return
         out.add(synth.render_note(inst, m + up, d, v, tun), t, (m + up, d, v))
 
     for ti, tr in enumerate(specs):
@@ -377,6 +454,7 @@ def render(a, style, progress=None, rng_seed=7):
                     # תיבת סיום: אקורד טוניקה ארוך
                     t = tl.beat_time(pos0)
                     dur = (tl.beat_time(pos0 + 1) - tl.beat_time(pos0)) * meter * 1.4   # אקורד ארוך
+                    final.update(t=t, dur=dur)
                     if inst == "drums":
                         for dn, dv in (("crash", 0.85), ("kick", 1.0)):
                             out.add(synth.render_drum(dn, dv), t, (dn, 0.3, dv))
@@ -385,10 +463,17 @@ def render(a, style, progress=None, rng_seed=7):
                         fin = enrich(tonic_chord, a.mode, rich)
                         fin = dict(fin, seventh=None) if not rich else fin
                         ns = set(_note_for(tr["bar"][0]["n"], fin, oct_))
-                        if inst not in BASS:
+                        if inst in BASS:
+                            low = min(ns) - 12
+                            if low + tp >= 28:
+                                ns.add(low)                       # הבס מסיים גם באוקטבה הנמוכה - סיום 'מלא'
+                        else:
                             ns |= set(_note_for("chord", fin, oct_))
-                        for m in sorted(ns):
-                            play(out, inst, m, dur, 0.62, t)
+                        # פסנתר, גיטרה ונבל 'פורטים' את אקורד הסיום מלמטה למעלה, כמו נגן אמיתי
+                        roll = 0.035 if inst in STRUMMED else 0.0
+                        for k, m in enumerate(sorted(ns)):
+                            play(out, inst, m, dur, 0.62 if inst not in BRASS else 0.75, t + k * roll,
+                                 section=True)
                     break
                 # מבנה: מבוא (2 תיבות), כלים שנכנסים בהדרגה, מילוי תופים בסוף כל משפט
                 phrase_bar = bar - IB
@@ -439,7 +524,21 @@ def render(a, style, progress=None, rng_seed=7):
                 if inst == "drums" and lvl == 0 and bar >= IB:
                     # בבית: בלי מצילות פתוחות וטמבורין - נשמע רגוע יותר
                     evs = [e for e in evs if e["n"] not in ("open_hat", "tambourine", "crash")]
-                lift = 0.82 if bar < IB else (0.86 if lvl == 0 else (1.07 if last_phrase else 1.0))
+                # הפתיח נבנה בהדרגה (קרשנדו) עד הכניסה של הזמר
+                lift = (0.7 + 0.22 * bar / max(1, IB - 1)) if bar < IB else \
+                    (0.86 if lvl == 0 else (1.07 if last_phrase else 1.0))
+                if inst == "drums" and INTRO_MEL and bar == IB - INTRO_MEL and bar > 0:
+                    cv = 0.45                                  # מצילה רכה כשהמנגינה של הפתיח מתחילה
+                    out.add(synth.render_drum("crash", cv), tl.beat_time(pos0), ("crash", 0.3, cv))
+                t_next = tl.beat_time(pos0 + meter) - tl.lead
+                if t_next > end_voice + 0.3 and bar > IB:
+                    # התיבה האחרונה לפני אקורד הסיום: 'גלגול' שמתגבר אל תוך האקורד
+                    if inst == "drums" and any(e["n"] == "snare" for e in bar_events):
+                        evs = [e for e in evs if e["t"] < meter - 1] + \
+                              [{"t": meter - 1 + k / 6, "n": "snare", "v": 0.3 + 0.11 * k} for k in range(6)]
+                    elif inst == "timpani":
+                        evs = [e for e in evs if e["t"] < meter - 1] + \
+                              [{"t": meter - 1 + k / 4, "n": "root", "v": 0.45 + 0.13 * k, "d": 0.3} for k in range(4)]
                 for ev in evs:
                     p = pos0 + ev["t"]
                     t = tl.beat_time(p) + rng.normal(0, 0.006)
@@ -473,7 +572,8 @@ def render(a, style, progress=None, rng_seed=7):
                                     tgt -= 12
                                 notes = [tgt - 1 if rng.random() < 0.5 else tgt + 1]
                         for k, m in enumerate(notes):
-                            play(out, inst, m, d, vv, cuts[ci] + tl.lead + k * ev.get("strum", 0.0))
+                            play(out, inst, m, d, vv, cuts[ci] + tl.lead + k * ev.get("strum", 0.0),
+                                 section=True)
                 bar += 1
                 if progress and ti == 0:
                     progress(min(95, int(100 * t_bar / max(1, a.duration))))
@@ -499,10 +599,37 @@ def render(a, style, progress=None, rng_seed=7):
             d = warp(e0 + off + tl.lead) - warp(s0 + off + tl.lead)
             play(out, lead, m, max(0.1, d * 0.95), 0.72, t)
         if INTRO_MEL:
+            scale = set(scale_pcs(a.tonic, a.mode))
+            half = sing0 - (INTRO_MEL / 2) * bar_sec           # החצי השני של הפתיח
             for s0, e0, m in intro_melody(a, tl, INTRO_MEL):
-                play(out, lead, m, max(0.1, (e0 - s0) * 0.95), 0.66, s0 + tl.lead + rng.normal(0, 0.008))
+                j = rng.normal(0, 0.008)
+                play(out, lead, m, max(0.1, (e0 - s0) * 0.95), 0.66, s0 + tl.lead + j)
+                if s0 >= half - 0.05 and style.get("intro_thirds", True):
+                    # קול שני בטרצה מתחת למנגינה - הפתיח 'מתמלא' לקראת הכניסה של הזמר
+                    play(out, lead, third_below(m, scale), max(0.1, (e0 - s0) * 0.95), 0.4, s0 + tl.lead + j + 0.01)
+        if final and solo:
+            # אחרי הסולו: הכלי המוביל מסיים על הטוניקה ומחזיק אותה עם אקורד הסיום
+            top = 72 + (a.tonic - 72) % 12
+            play(out, lead, top, final["dur"] * 0.95, 0.6, final["t"])
         spec = {"instrument": lead, "volume": 0.75, "pan": 0.15, "solo": True}
         tracks.append((spec, out.buf, out.events))
+    insts = {tr["instrument"] for tr in specs} | {lead}
+    from . import sampler
+    if a.steady and style.get("brass_hits", True) and (insts & BRASS) and sampler.has("trumpet"):
+        # קבוצת נשיפה: הרמות אל הפזמונים, דקירות באמצע הפזמון, וצליל עליון באקורד הסיום
+        hits = brass_hits(a, tl, levels, IB, chord_at, last_voice, compound)
+        out = _Track(n)
+        for pos, beats_len, ms, v in hits:
+            t = tl.beat_time(pos) + rng.normal(0, 0.005)
+            d = max(0.1, beats_len * tl.period)
+            for m in ms:
+                play(out, "trumpet" if "trumpet" in insts or m > 64 else "brass", m, d, v, t, section=True)
+        if final:
+            for m in (67 + (a.tonic - 67) % 12, 72 + (a.tonic + 7 - 72) % 12):
+                play(out, "trumpet", m, final["dur"] * 0.9, 0.78, final["t"], section=True)
+        if out.events:
+            spec = {"instrument": "trumpet", "volume": 0.4, "pan": 0.3, "hits": True}
+            tracks.append((spec, out.buf, out.events))
     if a.steady and style.get("counter", True):
         cm = counter_melody(a, tl, chord_at, rng, sing0, last_voice)
         if cm:
