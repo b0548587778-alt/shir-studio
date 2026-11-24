@@ -239,10 +239,16 @@ SPACE_NAMES = {"auto": "אולם (רגיל)", "room": "חדר קטן ואינט�
 
 
 def mix(voice, tracks, lead, style, accomp_db=0.0, voice_db=0.0, reverb=1.0, stems=False, harmony=None, choir=False,
-        tone="natural", space="auto", loudness="normal"):
-    """voice: מונו מעובד. tracks: [(spec, buf)]. lead: שניות מבוא לפני השירה."""
+        tone="natural", space="auto", loudness="normal", backing=None):
+    """voice: מונו מעובד. tracks: [(spec, buf)]. lead: שניות מבוא לפני השירה.
+    backing: פלייבק מוכן (סטריאו) שעליו שרו - משמש כליווי במקום כלים שהתוכנה מנגנת."""
     n = max(len(t[1]) for t in tracks) if tracks else len(voice) + int(lead * SR)
     n = max(n, len(voice) + int(lead * SR) + SR)
+    if backing is not None:
+        backing = np.asarray(backing, dtype=np.float32)
+        if backing.ndim == 1:
+            backing = np.stack([backing, backing], axis=1)
+        n = max(n, len(backing))
     from . import polish, loudness as loud_mod
     voices = harmony if isinstance(harmony, (list, tuple)) else ([harmony] if harmony is not None else [])
     # הקול הראשי והקולות הנוספים מעובדים במקביל (כל אחד בליבה אחרת של המעבד) - אותה תוצאה, פחות המתנה
@@ -290,7 +296,9 @@ def mix(voice, tracks, lead, style, accomp_db=0.0, voice_db=0.0, reverb=1.0, ste
             acc[:, 1] += b * gr
         if inst == "drums":
             acc += room(b) * 0.22                 # צליל של חדר - תופים 'חיים' ולא יבשים
-    if tracks:
+    if backing is not None:
+        acc[:len(backing)] += backing[:n]
+    if tracks or backing is not None:
         ar = rms(acc[s:s + len(v)]) if len(v) else rms(acc)
         target = vr * 10 ** ((style.get("accomp_db", -5) + accomp_db) / 20)
         acc *= target / max(ar, 1e-9)
@@ -320,7 +328,8 @@ def mix(voice, tracks, lead, style, accomp_db=0.0, voice_db=0.0, reverb=1.0, ste
     vst[:, 1] += np.concatenate([np.zeros(int(0.012 * SR)), ech[:-int(0.012 * SR)]]) * gr
     sec_v, sec_a = SPACES.get(space, SPACES["hall"])
     vst = add_reverb(vst, rv * 0.7, sec_v)
-    acc = add_reverb(acc, rv, sec_a)
+    if backing is None:                     # פלייבק מוכן כבר מעורבב עם ההדהוד שלו
+        acc = add_reverb(acc, rv, sec_a)
     out = vst + acc
     # חיתוך שקט בסוף
     loud = np.where(np.max(np.abs(out), axis=1) > 1e-4)[0]

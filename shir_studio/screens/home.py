@@ -44,11 +44,11 @@ class HomeScreen(QWidget):
         v.addStretch()
         h2 = QHBoxLayout()
         for text, sig in (("📂  פתח פרויקט שמור", self.open_project), ("📚  כמה שירים ברצף", self.batch),
-                          ("🎼  מחרוזת", self.medley), ("🎚  הפרדת קול", self.separate)):
+                          ("🎼  מחרוזת", self.medley), ("🎚  הפרדת קול\nופלייבק", self.separate)):
             b = big_button(text, "light")
             b.setStyleSheet("font-size:21px; padding:12px 10px;")
             if sig is self.separate:
-                b.setToolTip("מוציא את השירה מתוך שיר מוכן שיש בו גם כלי נגינה - ומשאיר את הנגינה בנפרד")
+                b.setToolTip("הפרדת שירה מנגינה, גרסה ווקאלית, הפרדה לכלים, פלייבק בסולם ובקצב שלך, ושירה על פלייבק")
             b.clicked.connect(sig)
             h2.addWidget(b)
         v.addLayout(h2)

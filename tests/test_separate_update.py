@@ -88,10 +88,12 @@ def test_separation_screen_saves_two_files_and_continues(qapp, appdata, fake_sd,
     w = MainWindow()
     try:
         from PySide6.QtWidgets import QFileDialog
-        monkeypatch.setattr(QFileDialog, "getOpenFileName", staticmethod(lambda *a, **k: ("", "")))
+        from shir_studio.toolsview import ToolsDialog
+        monkeypatch.setattr(ToolsDialog, "exec", lambda self: (setattr(self, "action", ("separate", self.mode())), 1)[1])
+        monkeypatch.setattr(QFileDialog, "getOpenFileNames", staticmethod(lambda *a, **k: ([], "")))
         w.home.separate.emit()                                           # בחירת הקובץ בוטלה - לא קורה כלום
         assert w.stack.currentWidget() is w.home
-        monkeypatch.setattr(QFileDialog, "getOpenFileName", staticmethod(lambda *a, **k: (src, "")))
+        monkeypatch.setattr(QFileDialog, "getOpenFileNames", staticmethod(lambda *a, **k: ([src], "")))
         w.home.separate.emit()
         t0 = time.time()
         while w.stack.currentWidget() is not w.style_page:
