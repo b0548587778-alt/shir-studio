@@ -42,3 +42,14 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 Drum samples: "MuldjordKit" by Lars Muldjord (www.muldjord.com, www.drumgizmo.org),
 SF2 version by the FreePats project. Licensed under Creative Commons Attribution 4.0 International
 (https://creativecommons.org/licenses/by/4.0/). The samples were trimmed and converted to mono.
+
+---
+## מודל הפרדת הקול (רישיון MIT - חובה לתת קרדיט)
+Vocal separation model: "UVR-MDX-NET Voc FT" from the Ultimate Vocal Remover project
+(https://github.com/Anjok07/ultimatevocalremovergui), by Anjok07 and aufr33, based on the MDX-Net
+architecture (KUIELab / Woosung Choi) and on vocal models by KimberleyJSN. The UVR project publishes its
+models under the MIT License and asks third-party applications to credit UVR and its developers.
+File: `shir_studio/models/vocals.onnx` (unmodified;
+SHA-256 534b2070fcc7df514b13ef660dc8cbb328679c2374d04354a5c42bb14ecce111).
+
+The model runs with ONNX Runtime (https://onnxruntime.ai), Copyright (c) Microsoft Corporation, MIT License.

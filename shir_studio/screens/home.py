@@ -1,4 +1,4 @@
-"""מסך הפתיחה: הקלטה, בחירת קובץ, פרויקט שמור, כמה שירים ברצף ומחרוזת."""
+"""מסך הפתיחה: הקלטה, בחירת קובץ, פרויקט שמור, כמה שירים ברצף, מחרוזת והפרדת קול."""
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QCheckBox, QSpinBox
 
@@ -12,6 +12,7 @@ class HomeScreen(QWidget):
     open_project = Signal()
     batch = Signal()
     medley = Signal()
+    separate = Signal()
     check_update = Signal()
 
     def __init__(self):
@@ -43,9 +44,11 @@ class HomeScreen(QWidget):
         v.addStretch()
         h2 = QHBoxLayout()
         for text, sig in (("📂  פתח פרויקט שמור", self.open_project), ("📚  כמה שירים ברצף", self.batch),
-                          ("🎼  מחרוזת", self.medley)):
+                          ("🎼  מחרוזת", self.medley), ("🎚  הפרדת קול", self.separate)):
             b = big_button(text, "light")
-            b.setStyleSheet("font-size:22px; padding:12px 14px;")
+            b.setStyleSheet("font-size:21px; padding:12px 10px;")
+            if sig is self.separate:
+                b.setToolTip("מוציא את השירה מתוך שיר מוכן שיש בו גם כלי נגינה - ומשאיר את הנגינה בנפרד")
             b.clicked.connect(sig)
             h2.addWidget(b)
         v.addLayout(h2)
