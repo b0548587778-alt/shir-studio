@@ -536,6 +536,8 @@ class MainWindow(QMainWindow):
         info = self.song.info()
         if not info["steady"]:
             hint += "\nהשיר מושר בקצב חופשי, לכן הליווי רך ובלי תופים."
+        elif getattr(self.song.analysis, "auto_waltz", False):
+            hint += "\nהשיר זוהה כוואלס (3/4). לא מתאים? אפשר לשנות את המשקל ב'מתקדם'."
         elif self.settings.modulate and self.song.analysis.modulate_at is None:
             hint += "\nהשיר קצר מדי לעליית סולם."
         self.done.hint.setText(hint)

@@ -1,6 +1,6 @@
 """ניקוי רעשי רקע בשיטת 'שער ספקטרלי' (Spectral gating) - כתוב כאן מאפס, ללא תלות ברישיונות נוספים."""
 import numpy as np
-from scipy.signal import stft, istft, butter, sosfiltfilt
+from scipy.signal import stft, istft, butter, sosfiltfilt, iirnotch, tf2sos
 from scipy.ndimage import uniform_filter
 
 from .fileio import SR
@@ -12,6 +12,43 @@ HOP = 512
 def _highpass(x, cutoff=70.0):
     sos = butter(4, cutoff, btype="highpass", fs=SR, output="sos")
     return sosfiltfilt(sos, x).astype(np.float32)
+
+
+def hum_frequencies(x, limit=1000.0):
+    """מוצא זמזום של רשת החשמל (50 או 60 הרץ וההרמוניות שלו): קו דק וקבוע בספקטרום,
+    שנמצא שם גם ברגעים השקטים. מחזיר את רשימת התדרים שיש לסנן."""
+    n = 32768                                             # דיוק של 1.3 הרץ
+    if len(x) < 3 * n:
+        return []
+    hop = n // 2
+    win = np.hanning(n).astype(np.float32)
+    k = min(60, (len(x) - n) // hop + 1)                  # עד 60 קטעים, מפוזרים על כל השיר
+    starts = np.linspace(0, len(x) - n, k).astype(int)
+    spec = np.stack([np.abs(np.fft.rfft(x[s0:s0 + n] * win)) ** 2 for s0 in starts])
+    floor = np.percentile(spec, 20, axis=0)               # מה שנשאר גם כשהזמר שותק
+    df = SR / n
+    best = []
+    for base in (50.0, 60.0):
+        found = []
+        for h in range(1, int(limit / base) + 1):
+            i = int(round(base * h / df))
+            lo, hi = max(1, i - int(18 / df)), i + int(18 / df)
+            around = np.median(np.concatenate([floor[lo:i - 3], floor[i + 4:hi]]))
+            if floor[i - 1:i + 2].max() > 30 * around + 1e-12:        # בולט ב-15dB מעל הסביבה
+                found.append(base * h)
+        if found and (found[0] <= 3 * base) and (len(found) >= 2 or found[0] == base) and len(found) > len(best):
+            best = found
+    return best
+
+
+def remove_hum(x):
+    """מסנן את זמזום החשמל במסננים צרים מאוד (4 הרץ) - הקול כמעט לא מושפע."""
+    freqs = hum_frequencies(x)
+    y = np.asarray(x, dtype=np.float64)
+    for f in freqs:
+        b, a = iirnotch(f, f / 4.0, fs=SR)
+        y = sosfiltfilt(tf2sos(b, a), y)
+    return y.astype(np.float32), freqs
 
 
 BLOCK = 20 * SR       # עיבוד בקטעים של 20 שניות - שיר ארוך לא ימלא את הזיכרון
@@ -31,6 +68,7 @@ def _spec(seg):
 
 def denoise(x: np.ndarray, strength: float = 1.0, progress=None) -> np.ndarray:
     """strength: 0 (בלי ניקוי) עד 1 (ניקוי מלא)."""
+    x, _ = remove_hum(x)
     x = _highpass(x)
     n = len(x)
     if progress:

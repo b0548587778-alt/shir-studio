@@ -251,6 +251,60 @@ def note_onsets(x, notes):
     return np.array(out)
 
 
+def _beat_positions(beats, onsets):
+    """לכל תחילת צליל: (מספר הפעמה, המיקום בתוך הפעמה 0..1)."""
+    b = np.asarray(beats, dtype=float)
+    out = []
+    for t in np.asarray(onsets, dtype=float):
+        k = int(np.clip(np.searchsorted(b, t) - 1, 0, len(b) - 2))
+        f = (t - b[k]) / (b[k + 1] - b[k])
+        if -0.2 < f < 1.2:
+            out.append((k, f))
+    return out
+
+
+def double_time(beats, tempo, onsets):
+    """שיר מהיר שזוהה בחצי מהקצב שלו: כשהזמר שר בקביעות גם בין הפעמות, הפעמה האמיתית מהירה פי שניים.
+    מחזיר (פעמות, קצב) - כפולים אם צריך."""
+    b = np.asarray(beats, dtype=float)
+    pos = _beat_positions(b, onsets)
+    if tempo > 96 or len(b) < 6 or len(pos) < 8:
+        return b, tempo
+    off = float(np.mean([abs(f - 0.5) < 0.2 for _, f in pos]))
+    ioi = float(np.median(np.diff(np.sort(onsets)))) / float(np.median(np.diff(b)))
+    if off < 0.25 or ioi > 0.6:
+        return b, tempo
+    out = np.empty(2 * len(b) - 1)
+    out[0::2] = b
+    out[1::2] = (b[:-1] + b[1:]) / 2
+    return out, tempo * 2
+
+
+def detect_meter(beats, notes, onsets):
+    """ואלס (3/4) או משקל רגיל (4/4)? לפי המקומות שבהם מתחילים הצלילים הארוכים:
+    בוואלס הם חוזרים כל שלוש פעמות. מחזיר 3 רק כשזה ברור - אחרת 4."""
+    b = np.asarray(beats, dtype=float)
+    longs = [nt for nt in notes if nt.end - nt.start > 0.1]
+    if len(b) < 24 or len(longs) != len(onsets) or len(longs) < 12:
+        return 4
+    period = float(np.median(np.diff(b)))
+    acc = np.zeros(len(b))
+    for nt, t in zip(longs, onsets):
+        k = int(np.argmin(np.abs(b - t)))
+        if abs(b[k] - t) < 0.2 * period:
+            acc[k] += min(nt.end - nt.start, 4 * period) / period
+    if acc.sum() <= 0 or np.std(acc) < 1e-9:
+        return 4
+    c, r = {}, {}
+    for m in (2, 3, 4):
+        share = np.array([acc[ph::m].sum() for ph in range(m)])
+        c[m] = share.max() / share.sum() * m             # 1 = אין הדגשה קבועה, m = כל ההדגשות על פעמה אחת
+        r[m] = float(np.corrcoef(acc[:-m], acc[m:])[0, 1])
+    if c[3] >= 1.5 and c[3] > c[4] and c[3] > c[2] and r[3] > max(r[2], r[4]):
+        return 3
+    return 4
+
+
 def refine_beats(beats, onsets, rounds=6):
     """סינכרון עדין: מצמיד את רשת הפעמות לתחילות הצלילים של הזמר.
     מעקב הפעמות מדויק רק עד מאית שנייה ומפגר כשהזמר מאיץ או מאט; כאן כל פעמה זזה אל הצלילים
@@ -400,6 +454,8 @@ def analyze(x: np.ndarray, strength: float = 0.8, progress=None):
     tempo, beats, clarity = _tempo_beats(env)
     if progress:
         progress(45)
+    onsets = note_onsets(x, notes)
+    beats, tempo = double_time(beats, tempo, onsets)
     # קצב קבוע? בודקים כמה תחילות צלילים נופלות על רשת שמיניות של הפעמות
     ons = [nt.start for nt in notes if nt.end - nt.start > 0.12]
     if len(beats) >= 8 and ons:
@@ -409,14 +465,15 @@ def analyze(x: np.ndarray, strength: float = 0.8, progress=None):
         on8 = 0.0
     steady = bool(clarity > 0.18 and on8 > 0.4)
     if steady:
-        beats = refine_beats(beats, note_onsets(x, notes))
+        beats = refine_beats(beats, onsets)
     a = Analysis(f0=f0, midi_c=mc0, tuning=glob, tonic=ranked[0][0], mode=ranked[0][1], notes=notes,
                  correction=None, beats=beats, tempo=tempo, steady=steady,
                  downbeat=0, duration=duration, keys=_distinct(ranked[:1] + theory.rank_keys(w, None)), strength=strength,
                  curve_term=(curve - glob))
     if steady:
         a.downbeat = _downbeat(beats, notes)
-    a.auto = {"beats": beats, "tempo": tempo, "steady": steady, "keys": list(a.keys)}
+    a.auto = {"beats": beats, "tempo": tempo, "steady": steady, "keys": list(a.keys),
+              "meter": detect_meter(beats, notes, onsets) if steady else 4}
     set_key(a, 0)
     if progress:
         progress(55)
@@ -457,7 +514,7 @@ def correction_for(a, strength):
 
 def use_grid(a, beats, tempo, steady):
     """קובע את הפעמות מבחוץ - כשהזמר שר על ליווי קיים, הקצב כבר ידוע בדיוק."""
-    a.auto.update(beats=np.asarray(beats, float), tempo=float(tempo), steady=bool(steady))
+    a.auto.update(beats=np.asarray(beats, float), tempo=float(tempo), steady=bool(steady), meter=4)
     a.beats, a.tempo, a.steady = a.auto["beats"], a.auto["tempo"], a.auto["steady"]
     if a.steady:
         a.downbeat = _downbeat(a.beats, a.notes, a.meter)
@@ -519,9 +576,15 @@ def suggest_transpose(a):
 
 def apply_settings(a, st):
     """מחיל הגדרות מתקדמות של המשתמש על הניתוח האוטומטי."""
-    a.compound = st.meter == 6                 # 6/8: שתי פעמות (מנוקדות) בתיבה
-    a.meter = 2 if a.compound else st.meter
-    a.chords_per_bar = st.chords_per_bar if st.meter in (4, 6) else 1
+    meter = st.meter
+    # ואלס שזוהה אוטומטית - כשהמשתמש (או הסגנון) לא קבעו משקל, והקצב הוא זה שזוהה מהשירה
+    a.auto_waltz = bool(meter == 4 and getattr(st, "auto_meter", True) and st.tempo_mode == "auto"
+                        and a.auto.get("meter") == 3)
+    if a.auto_waltz:
+        meter = 3
+    a.compound = meter == 6                    # 6/8: שתי פעמות (מנוקדות) בתיבה
+    a.meter = 2 if a.compound else meter
+    a.chords_per_bar = st.chords_per_bar if meter in (4, 6) else 1
     a.transpose = st.transpose
     a.strength = st.tune / 100
     a.note_edits = getattr(st, "note_edits", None) or None
