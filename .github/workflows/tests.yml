@@ -30,3 +30,7 @@ jobs:
           pip install -r requirements.txt pytest
       - name: Tests
         run: python -m pytest -q tests
+      - name: Self test (the same one the installer build runs)
+        timeout-minutes: 8
+        # בשרת הבדיקות אין כרטיס קול, לכן רק טעינת כרטיס הקול מדולגת; כל השאר רץ כמו בבניית קובץ ההתקנה
+        run: python -c "import sys, types; sys.modules['sounddevice'] = types.ModuleType('sounddevice'); from shir_studio.__main__ import selftest; selftest()"

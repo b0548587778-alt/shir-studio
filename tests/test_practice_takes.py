@@ -415,3 +415,29 @@ def test_noise_between_phrases_is_pushed_down():
     y = denoise(noisy)
     after = 20 * np.log10(rms(y[gap]) / rms(y[act]))
     assert after < before - 19                                       # הרחש שבין המשפטים יורד ב-19dB לפחות
+
+
+def test_pitch_shift_always_finishes():
+    """צלילים שמתחילים בפתאומיות אחרי שקט (כמו בבדיקה העצמית של קובץ ההתקנה) - התיקון לא נתקע."""
+    import threading
+    from shir_studio.audio.psola import shift
+    t = np.arange(SR * 12) / SR
+    f = 220 * 2 ** (np.floor(t * 2) % 5 / 12)
+    ph = 2 * np.pi * np.cumsum(f) / SR
+    x = sum(np.sin(k * ph) / k for k in range(1, 12)) * ((t * 2) % 1 < 0.85)
+    x = (0.3 * x + 0.01 * np.random.default_rng(0).standard_normal(len(t))).astype("float32")
+    f0 = yin(x)[0]
+    done = {}
+    for corr in (0.0, 0.4, -1.0):
+        th = threading.Thread(target=lambda: done.update(y=shift(x, f0, np.full(len(f0), corr))), daemon=True)
+        th.start()
+        th.join(60)
+        assert not th.is_alive(), "תיקון גובה הצליל נתקע"
+        y = done.pop("y")
+        assert len(y) == len(x) and np.isfinite(y).all()
+        assert 0.5 < np.sqrt(np.mean(y ** 2)) / np.sqrt(np.mean(x ** 2)) < 1.5
+    # קלטים קיצוניים: שקט מוחלט, רעש בלבד, וצליל נמוך מאוד
+    for sig in (np.zeros(SR, np.float32), 0.1 * np.random.default_rng(1).standard_normal(2 * SR).astype(np.float32),
+                (0.3 * np.sin(2 * np.pi * 70 * np.arange(2 * SR) / SR)).astype(np.float32)):
+        f = yin(sig)[0]
+        assert len(shift(sig, f, np.full(len(f), 0.5))) == len(sig)
