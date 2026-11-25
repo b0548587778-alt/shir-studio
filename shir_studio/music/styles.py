@@ -3,6 +3,8 @@ import json
 import os
 import sys
 
+from ..i18n import tx
+
 
 def styles_dir():
     base = getattr(sys, "_MEIPASS", None)
@@ -19,17 +21,18 @@ def load_styles():
             with open(os.path.join(d, fn), encoding="utf-8") as f:
                 s = json.load(f)
             s["id"] = fn[:-5]
+            s["name"], s["description"] = tx(s.get("name", "")), tx(s.get("description", ""))   # לפי שפת הממשק
             out.append(s)
     return sorted(out, key=lambda s: s.get("order", 99))
 
 
 # כלים שאפשר להחליף ביניהם (כלים מלודיים - לא תופים)
-SWAPPABLE = {"piano": "פסנתר", "guitar": "גיטרה", "steel_guitar": "גיטרה מתכת", "accordion": "אקורדיון",
-             "violin": "כינור", "clarinet": "קלרינט", "flute": "חליל", "trumpet": "חצוצרה",
-             "brass": "כלי נשיפה", "strings": "כלי מיתר", "slow_strings": "מיתרים רכים",
-             "organ": "עוגב", "choir": "מקהלה", "choir_oo": "מקהלה (אוּ)",
-             "cello": "צ'לו", "harp": "נבל", "oboe": "אבוב", "bassoon": "בסון", "horn": "קרן יער",
-             "marimba": "מרימבה", "glockenspiel": "פעמוני זכוכית", "bells": "פעמונים", "bass": "בס", "acoustic_bass": "קונטרבס"}
+SWAPPABLE = {"piano": tx("פסנתר"), "guitar": tx("גיטרה"), "steel_guitar": tx("גיטרה מתכת"), "accordion": tx("אקורדיון"),
+             "violin": tx("כינור"), "clarinet": tx("קלרינט"), "flute": tx("חליל"), "trumpet": tx("חצוצרה"),
+             "brass": tx("כלי נשיפה"), "strings": tx("כלי מיתר"), "slow_strings": tx("מיתרים רכים"),
+             "organ": tx("עוגב"), "choir": tx("מקהלה"), "choir_oo": tx("מקהלה (אוּ)"),
+             "cello": tx("צ'לו"), "harp": tx("נבל"), "oboe": tx("אבוב"), "bassoon": tx("בסון"), "horn": tx("קרן יער"),
+             "marimba": tx("מרימבה"), "glockenspiel": tx("פעמוני זכוכית"), "bells": tx("פעמונים"), "bass": tx("בס"), "acoustic_bass": tx("קונטרבס")}
 
 
 def instruments_of(style):

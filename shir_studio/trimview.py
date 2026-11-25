@@ -1,4 +1,6 @@
 """חלונות עריכת ההקלטה: חיתוך (התחלה/סוף) ובחירת משפט להקלטה מחדש."""
+from .i18n import tx
+from .i18n import direction
 import numpy as np
 from PySide6.QtCore import Qt, QRectF, QPointF, Signal
 from PySide6.QtGui import QPainter, QPen, QColor
@@ -92,12 +94,12 @@ class TrimDialog(QDialog):
 
     def __init__(self, parent, x, play=None, stop=None):
         super().__init__(parent)
-        self.setWindowTitle("חיתוך ההקלטה")
-        self.setLayoutDirection(Qt.RightToLeft)
+        self.setWindowTitle(tx("חיתוך ההקלטה"))
+        self.setLayoutDirection(direction())
         self.setStyleSheet(CSS)
         self.x, self._play, self._stop = x, play, stop
         v = QVBoxLayout(self)
-        lab = QLabel("גרור את הקו הכחול (התחלה) ואת הקו האדום (סוף). רק החלק הירוק יישאר.")
+        lab = QLabel(tx("גרור את הקו הכחול (התחלה) ואת הקו האדום (סוף). רק החלק הירוק יישאר."))
         lab.setWordWrap(True)
         v.addWidget(lab)
         self.wave = WaveView(x)
@@ -106,19 +108,19 @@ class TrimDialog(QDialog):
         v.addWidget(self.info)
         self.wave.changed.connect(self._show)
         h = QHBoxLayout()
-        b_play = QPushButton("▶  השמע את החלק שנבחר")
+        b_play = QPushButton(tx("▶  השמע את החלק שנבחר"))
         b_play.clicked.connect(self.play_selection)
-        b_auto = QPushButton("✂  הורד רק את השקט")
+        b_auto = QPushButton(tx("✂  הורד רק את השקט"))
         b_auto.clicked.connect(self.auto)
-        b_all = QPushButton("הכול")
+        b_all = QPushButton(tx("הכול"))
         b_all.clicked.connect(lambda: self.wave.set_range(0, self.wave.dur))
         h.addWidget(b_play); h.addWidget(b_auto); h.addWidget(b_all); h.addStretch()
         v.addLayout(h)
         h = QHBoxLayout()
-        ok = QPushButton("חתוך")
+        ok = QPushButton(tx("חתוך"))
         ok.setStyleSheet("background:#2c7a3f; color:white; font-weight:bold;")
         ok.clicked.connect(self.accept)
-        cancel = QPushButton("ביטול")
+        cancel = QPushButton(tx("ביטול"))
         cancel.clicked.connect(self.reject)
         h.addWidget(ok, 2); h.addWidget(cancel, 1)
         v.addLayout(h)
@@ -133,8 +135,7 @@ class TrimDialog(QDialog):
 
     def _show(self):
         s, e = self.wave.start, self.wave.end
-        self.info.setText(f"נשאר: מ-⁦{fmt_time(s)}⁩ עד ⁦{fmt_time(e)}⁩ "
-                          f"(⁦{fmt_time(e - s)}⁩ מתוך ⁦{fmt_time(self.wave.dur)}⁩)")
+        self.info.setText(tx("נשאר: מ-⁦{0}⁩ עד ⁦{1}⁩ (⁦{2}⁩ מתוך ⁦{3}⁩)").format(fmt_time(s), fmt_time(e), fmt_time(e - s), fmt_time(self.wave.dur)))
 
     def play_selection(self):
         if self._play:
@@ -156,33 +157,33 @@ class PunchDialog(QDialog):
 
     def __init__(self, parent, x, play=None, stop=None):
         super().__init__(parent)
-        self.setWindowTitle("הקלטה מחדש של משפט אחד")
-        self.setLayoutDirection(Qt.RightToLeft)
+        self.setWindowTitle(tx("הקלטה מחדש של משפט אחד"))
+        self.setLayoutDirection(direction())
         self.setStyleSheet(CSS)
         self.x, self._play, self._stop = x, play, stop
         self.slots = edit.phrase_slots(x)
         v = QVBoxLayout(self)
-        lab = QLabel("בחר את המשפט שרוצים לתקן, האזן לו, ולחץ 'הקלט מחדש'.\n"
+        lab = QLabel(tx("בחר את המשפט שרוצים לתקן, האזן לו, ולחץ 'הקלט מחדש'.\n"
                      "לפני ההקלטה תשמע את מה שקודם למשפט, כדי להיכנס בקצב ובסולם הנכונים. "
-                     "כדאי לשים אוזניות. שאר השיר נשאר כמו שהוא.")
+                     "כדאי לשים אוזניות. שאר השיר נשאר כמו שהוא."))
         lab.setWordWrap(True)
         v.addWidget(lab)
         self.list = QListWidget()
         for i, (s, e, _, _) in enumerate(self.slots):
             self.list.addItem(QListWidgetItem(
-                f"משפט {i + 1}   ⁦{fmt_time(s)} – {fmt_time(e)}⁩   ({e - s:.0f} שניות)"))
+                tx("משפט {0}   ⁦{1} – {2}⁩   ({3:.0f} שניות)").format(i + 1, fmt_time(s), fmt_time(e), e - s)))
         if self.slots:
             self.list.setCurrentRow(0)
         self.list.itemDoubleClicked.connect(lambda _: self.play_phrase())
         v.addWidget(self.list, 1)
         h = QHBoxLayout()
-        b_play = QPushButton("▶  האזן למשפט")
+        b_play = QPushButton(tx("▶  האזן למשפט"))
         b_play.clicked.connect(self.play_phrase)
-        self.ok = QPushButton("🎤  הקלט מחדש")
+        self.ok = QPushButton(tx("🎤  הקלט מחדש"))
         self.ok.setStyleSheet("background:#b0322a; color:white; font-weight:bold;")
         self.ok.setEnabled(bool(self.slots))
         self.ok.clicked.connect(self.accept)
-        cancel = QPushButton("סגור")
+        cancel = QPushButton(tx("סגור"))
         cancel.clicked.connect(self.reject)
         h.addWidget(b_play); h.addWidget(self.ok, 2); h.addWidget(cancel)
         v.addLayout(h)

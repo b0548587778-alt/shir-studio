@@ -62,7 +62,7 @@ def ready(qapp, w, voice):
     """שיר מוכן על המסך."""
     w.process(voice.copy())
     assert w.stack.currentWidget() is w.style_page
-    w.style_page.set_current(1)
+    w.style_page.set_current(2)
     w.make_song()
     wait(qapp, lambda: w.stack.currentWidget() is w.done)
     assert not w.log["error"]
@@ -102,13 +102,13 @@ def test_make_listen_compare_undo(qapp, win, voice):
     # סגנון אחר, ואז ביטול
     first = w.result
     w.done.other_style.emit()
-    w.style_page.set_current(2)
+    w.style_page.set_current(3)
     w.style_page.make.emit()
     wait(qapp, lambda: w.stack.currentWidget() is w.done)
     assert w.done.b_undo.isEnabled() and w.result is not first
     w.done.undo.emit()
     wait(qapp, lambda: w.stack.currentWidget() is w.done)
-    assert w.style_page.current() == 1 and w.done.b_redo.isEnabled()
+    assert w.style_page.current() == 2 and w.done.b_redo.isEnabled()
     assert w.result.shape == first.shape and np.allclose(w.result, first, atol=1e-4)
 
 
@@ -264,7 +264,7 @@ def test_drag_files_and_project(qapp, win, voice, monkeypatch):
     assert w.log["error"] and w.stack.currentWidget() is w.home
     w.open_paths([p])
     assert w.stack.currentWidget() is w.style_page and w.original is not None
-    w.style_page.set_current(2)
+    w.style_page.set_current(3)
     w.settings.reverb = 140
     w.make_song()
     wait(qapp, lambda: w.stack.currentWidget() is w.done)
@@ -273,11 +273,11 @@ def test_drag_files_and_project(qapp, win, voice, monkeypatch):
     w.done.save_project.emit()
     assert os.path.exists(proj) and not w.dirty
     w.done.new_song.emit()
-    w.style_page.set_current(0)
+    w.style_page.set_current(1)
     w.settings.reverb = 100
     w.open_paths([proj])                                    # גרירת פרויקט - נפתח ומוכן מיד
     wait(qapp, lambda: w.stack.currentWidget() is w.done)
-    assert w.style_page.current() == 2 and w.settings.reverb == 140
+    assert w.style_page.current() == 3 and w.settings.reverb == 140
 
 
 def test_save_chord_sheet_and_share(qapp, win, voice, monkeypatch):
@@ -304,7 +304,7 @@ def test_unsaved_song_is_offered_after_restart(qapp, win, voice):
     from shir_studio import recovery
     w = win
     ready(qapp, w, voice)
-    w.style_page.set_current(2)
+    w.style_page.set_current(3)
     w.make_song()
     wait(qapp, lambda: w.stack.currentWidget() is w.done)
     w.close()                                               # נסגר בלי לשמור
@@ -314,7 +314,7 @@ def test_unsaved_song_is_offered_after_restart(qapp, win, voice):
     try:
         wait(qapp, lambda: w2.stack.currentWidget() is w2.done)        # ההצעה לשחזר מופיעה לבד בהפעלה
         assert "נמצא שיר שלא נשמר" in w.log["ask"]
-        assert w2.style_page.current() == 2 and np.array_equal(w2.original, voice)
+        assert w2.style_page.current() == 3 and np.array_equal(w2.original, voice)
         w2.dirty = False
         w2.close()                                          # הפעם הכול 'נשמר' - אין מה לשחזר
         assert recovery.pending() is None
@@ -344,7 +344,7 @@ def test_personal_taste_and_advanced_dialog(qapp, win, voice, monkeypatch):
     assert w.settings.modulate and "קצר מדי לעליית סולם" in w.done.hint.text()
     w2 = MainWindow()                                        # הפעלה חדשה של התוכנה
     try:
-        assert w2.settings.reverb == 150 and w2.settings.modulate and w2.style_page.current() == 1
+        assert w2.settings.reverb == 150 and w2.settings.modulate and w2.style_page.current() == 2
     finally:
         w2.close()
 

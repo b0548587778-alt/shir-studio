@@ -1,5 +1,6 @@
 """עוצמה לפי התקן הבין-לאומי (ITU-R BS.1770, יחידות LUFS) - כמו ברדיו ובאתרי המוזיקה,
 ושיא אמיתי (True Peak) - שהשיר לא 'ייחתך' גם אחרי המרה ל-MP3."""
+from ..i18n import tx
 import numpy as np
 from scipy.signal import sosfilt, resample_poly
 
@@ -7,7 +8,7 @@ from .fileio import SR
 
 # עוצמת השיר המוכן: רגיל = כמו באתרי המוזיקה, חזק = כמו דיסק, עדין = דינמי ושקט יותר
 TARGETS = {"soft": -18.0, "normal": -14.0, "loud": -11.0}
-NAMES = {"normal": "רגילה (כמו באתרי המוזיקה)", "loud": "חזקה (כמו דיסק)", "soft": "עדינה (דינמית יותר)"}
+NAMES = {"normal": tx("רגילה (כמו באתרי המוזיקה)"), "loud": tx("חזקה (כמו דיסק)"), "soft": tx("עדינה (דינמית יותר)")}
 PEAK_DB = -1.0
 
 
@@ -74,7 +75,7 @@ def finalize(st, target="normal", limiter=None):
     """מביא את השיר לעוצמה המבוקשת ושומר על שיא אמיתי בטוח. מחזיר (שיר, פי כמה הוגבר)."""
     goal = TARGETS.get(target, TARGETS["normal"]) if isinstance(target, str) else float(target)
     total = 1.0
-    for _ in range(3):
+    for _ in range(12):                # עיבוד עם שיא גדול (תזמורת שמתפתחת) צריך כמה סיבובים של הגבלה
         cur = lufs(st)
         if not np.isfinite(cur):
             break
@@ -87,6 +88,13 @@ def finalize(st, target="normal", limiter=None):
         if g > 1 and limiter is not None:
             st = limiter(st)
     ceiling = 10 ** (PEAK_DB / 20)
+    if limiter is not None:
+        # שיא אמיתי גבוה מדי: מגבילים רק את השיאים עצמם (ולא מנמיכים את כל השיר) - כך העוצמה שהושגה נשמרת
+        for _ in range(4):
+            tp = true_peak(st)
+            if tp <= ceiling:
+                break
+            st = limiter(st, float(np.max(np.abs(st)) * ceiling / tp * 0.985))
     tp = true_peak(st)
     if tp > ceiling:
         g = np.float32(ceiling / tp)

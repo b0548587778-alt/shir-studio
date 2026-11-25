@@ -1,5 +1,7 @@
 """גרף תיקון הזיופים: הקו האפור = מה שהזמר שר, הקו הירוק = אחרי התיקון.
 אפשר גם לתקן ביד: לגרור צליל למעלה או למטה, או לבטל את התיקון שלו בלחיצה כפולה."""
+from .i18n import tx
+from .i18n import direction
 import numpy as np
 from PySide6.QtCore import Qt, QPointF, QRectF
 from PySide6.QtGui import QPainter, QPen, QColor, QPainterPath, QFont
@@ -144,13 +146,13 @@ class PitchView(QWidget):
 class PitchDialog(QDialog):
     def __init__(self, parent, curves, edits=None):
         super().__init__(parent)
-        self.setWindowTitle("תיקון הזיופים - מה השתנה")
-        self.setLayoutDirection(Qt.RightToLeft)
+        self.setWindowTitle(tx("תיקון הזיופים - מה השתנה"))
+        self.setLayoutDirection(direction())
         self.setStyleSheet("QPushButton { font-size: 19px; min-height: 44px; padding: 6px 18px; border-radius: 12px; }")
         v = QVBoxLayout(self)
-        lab = QLabel("אפור = מה ששרת · ירוק = אחרי התיקון · מלבן = הצליל שאליו מתקנים\n"
+        lab = QLabel(tx("אפור = מה ששרת · ירוק = אחרי התיקון · מלבן = הצליל שאליו מתקנים\n"
                      "תיקון ידני: גרור מלבן למעלה או למטה כדי לשנות את הצליל (נצבע כתום). "
-                     "לחיצה כפולה = לא לתקן את הצליל הזה (מסגרת אדומה), ושוב לחיצה כפולה = חזרה לאוטומטי.")
+                     "לחיצה כפולה = לא לתקן את הצליל הזה (מסגרת אדומה), ושוב לחיצה כפולה = חזרה לאוטומטי."))
         lab.setStyleSheet("font-size:17px;")
         lab.setWordWrap(True)
         v.addWidget(lab)
@@ -163,12 +165,12 @@ class PitchDialog(QDialog):
         self.scroll.valueChanged.connect(lambda x: self.view.set_start(x / 10))
         v.addWidget(self.scroll)
         h = QHBoxLayout()
-        ok = QPushButton("✔  החל את התיקונים")
+        ok = QPushButton(tx("✔  החל את התיקונים"))
         ok.setStyleSheet("background:#2c7a3f; color:white; font-weight:bold;")
         ok.clicked.connect(self.accept)
-        clear = QPushButton("בטל את כל התיקונים הידניים")
+        clear = QPushButton(tx("בטל את כל התיקונים הידניים"))
         clear.clicked.connect(self.clear)
-        b = QPushButton("סגור")
+        b = QPushButton(tx("סגור"))
         b.clicked.connect(self.reject)
         h.addWidget(ok); h.addWidget(clear); h.addStretch(); h.addWidget(b)
         v.addLayout(h)

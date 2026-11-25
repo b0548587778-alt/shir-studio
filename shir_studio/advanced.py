@@ -1,4 +1,6 @@
 """חלון 'אפשרויות מתקדמות' - לאנשים טכנולוגיים ולמוזיקאים. המסך הרגיל נשאר פשוט."""
+from .i18n import tx
+from .i18n import direction
 from dataclasses import replace
 
 from PySide6.QtCore import Qt
@@ -42,14 +44,14 @@ def _slider(lo, hi, val, fmt):
 
 
 def _db(v):
-    return f"{v:+d} dB" if v else "רגיל"
+    return f"{v:+d} dB" if v else tx("רגיל")
 
 
 class AdvancedDialog(QDialog):
     def __init__(self, parent, settings: Settings, info=None, extras=False, fmt="mp3", style=None, artist=""):
         super().__init__(parent)
-        self.setWindowTitle("אפשרויות מתקדמות")
-        self.setLayoutDirection(Qt.RightToLeft)
+        self.setWindowTitle(tx("אפשרויות מתקדמות"))
+        self.setLayoutDirection(direction())
         self.setStyleSheet(CSS)
         self.resize(720, 760)
         self.info = info
@@ -62,54 +64,54 @@ class AdvancedDialog(QDialog):
         outer.addWidget(scroll)
 
         if info:
-            t = f"זוהה אוטומטית: סולם {info['key']}"
-            t += f" · קצב \u2066{info['tempo']} BPM\u2069" if info["steady"] else " · קצב חופשי"
+            t = tx("זוהה אוטומטית: סולם {0}").format(info['key'])
+            t += tx(" · קצב ⁦{0} BPM⁩").format(info['tempo']) if info["steady"] else tx(" · קצב חופשי")
             lab = QLabel(t)
             lab.setObjectName("small")
             v.addWidget(lab)
 
         # ---- קול
-        g = QGroupBox("קול")
+        g = QGroupBox(tx("קול"))
         f = QFormLayout(g)
         self.denoise = _slider(0, 100, settings.denoise, lambda x: f"{x}%")
-        self.tune = _slider(0, 100, settings.tune, lambda x: "כבוי" if x == 0 else f"{x}%")
+        self.tune = _slider(0, 100, settings.tune, lambda x: tx("כבוי") if x == 0 else f"{x}%")
         self.voice_db = _slider(-9, 9, settings.voice_db, _db)
         self.transpose = QSpinBox()
         self.transpose.setRange(-7, 7)
         self.transpose.setValue(settings.transpose)
-        self.transpose.setSuffix(" חצאי טונים")
-        f.addRow("ניקוי רעשים:", self.denoise)
-        f.addRow("תיקון זיופים:", self.tune)
-        f.addRow("עוצמת הקול:", self.voice_db)
-        f.addRow("העברת סולם (טרנספוזיציה):", self.transpose)
+        self.transpose.setSuffix(tx(" חצאי טונים"))
+        f.addRow(tx("ניקוי רעשים:"), self.denoise)
+        f.addRow(tx("תיקון זיופים:"), self.tune)
+        f.addRow(tx("עוצמת הקול:"), self.voice_db)
+        f.addRow(tx("העברת סולם (טרנספוזיציה):"), self.transpose)
         voice = (info or {}).get("voice")
         if voice:
             sug = voice["suggest"]
             vw = QWidget()
             vh = QHBoxLayout(vw)
             vh.setContentsMargins(0, 0, 0, 0)
-            txt = f"המנעד שלך בשיר: מ{voice['low']} עד {voice['high']}. "
+            txt = tx("המנעד שלך בשיר: מ{0} עד {1}. ").format(voice['low'], voice['high'])
             if sug:
-                way = "העלאה" if sug > 0 else "הורדה"
-                txt += f"מומלץ: {way} של \u2066{abs(sug)}\u2069 חצאי טונים, לגובה נוח יותר."
+                way = tx("העלאה") if sug > 0 else tx("הורדה")
+                txt += tx("מומלץ: {0} של ⁦{1}⁩ חצאי טונים, לגובה נוח יותר.").format(way, abs(sug))
             else:
-                txt += "השיר בגובה נוח."
+                txt += tx("השיר בגובה נוח.")
             lab = QLabel(txt)
             lab.setObjectName("small")
             lab.setWordWrap(True)
             vh.addWidget(lab, 1)
             if sug:
-                b = QPushButton("החל המלצה")
+                b = QPushButton(tx("החל המלצה"))
                 b.clicked.connect(lambda: self.transpose.setValue(sug))
                 vh.addWidget(b)
             f.addRow("", vw)
         self.harmony = QComboBox()
-        for label, val in (("בלי", "off"), ("אוטומטי", "auto"), ("מעל המנגינה", "above"),
-                           ("מתחת למנגינה", "below"), ("שלושה קולות (מעל ומתחת)", "three")):
+        for label, val in ((tx("בלי"), "off"), (tx("אוטומטי"), "auto"), (tx("מעל המנגינה"), "above"),
+                           (tx("מתחת למנגינה"), "below"), (tx("שלושה קולות (מעל ומתחת)"), "three")):
             self.harmony.addItem(label, val)
         self.harmony.setCurrentIndex(max(0, self.harmony.findData(settings.harmony)))
-        f.addRow("קול שני (הרמוניה):", self.harmony)
-        self.choir = QCheckBox("מקהלה - הקול נשמע כמו כמה זמרים")
+        f.addRow(tx("קול שני (הרמוניה):"), self.harmony)
+        self.choir = QCheckBox(tx("מקהלה - הקול נשמע כמו כמה זמרים"))
         self.choir.setChecked(bool(settings.choir))
         f.addRow("", self.choir)
         from .audio.polish import TONES
@@ -117,28 +119,28 @@ class AdvancedDialog(QDialog):
         for val, name in TONES.items():
             self.voice_tone.addItem(name, val)
         self.voice_tone.setCurrentIndex(max(0, self.voice_tone.findData(settings.voice_tone)))
-        f.addRow("אופי הקול:", self.voice_tone)
+        f.addRow(tx("אופי הקול:"), self.voice_tone)
         v.addWidget(g)
 
         # ---- מוזיקה
-        g = QGroupBox("מוזיקה")
+        g = QGroupBox(tx("מוזיקה"))
         f = QFormLayout(g)
         self.key = QComboBox()
-        self.key.addItem("אוטומטי", None)
+        self.key.addItem(tx("אוטומטי"), None)
         for mode in MODES:
             for t in range(12):
                 self.key.addItem(f"{NOTE_NAMES[t]} {MODES[mode][0]}", f"{t}:{mode}")
         if settings.key:
             i = self.key.findData(f"{settings.key[0]}:{settings.key[1]}")
             self.key.setCurrentIndex(max(0, i))
-        f.addRow("סולם:", self.key)
+        f.addRow(tx("סולם:"), self.key)
 
         tw = QWidget()
         th = QHBoxLayout(tw)
         th.setContentsMargins(0, 0, 0, 0)
-        self.t_auto = QRadioButton("אוטומטי")
-        self.t_manual = QRadioButton("קבוע")
-        self.t_free = QRadioButton("חופשי (בלי תופים)")
+        self.t_auto = QRadioButton(tx("אוטומטי"))
+        self.t_manual = QRadioButton(tx("קבוע"))
+        self.t_free = QRadioButton(tx("חופשי (בלי תופים)"))
         self.tgroup = QButtonGroup(self)
         for b in (self.t_auto, self.t_manual, self.t_free):
             self.tgroup.addButton(b)
@@ -149,43 +151,43 @@ class AdvancedDialog(QDialog):
         {"auto": self.t_auto, "manual": self.t_manual, "free": self.t_free}[settings.tempo_mode].setChecked(True)
         th.addWidget(self.t_auto); th.addWidget(self.t_manual); th.addWidget(self.bpm); th.addWidget(self.t_free)
         th.addStretch()
-        f.addRow("קצב:", tw)
+        f.addRow(tx("קצב:"), tw)
 
         self.meter = QComboBox()
-        self.meter.addItem("אוטומטי (4/4, או ואלס כשהוא מזוהה)", 0)
-        self.meter.addItem("4/4 (רגיל)", 4)
-        self.meter.addItem("3/4 (ואלס)", 3)
-        self.meter.addItem("6/8 (מתנדנד)", 6)
+        self.meter.addItem(tx("אוטומטי (4/4, או ואלס כשהוא מזוהה)"), 0)
+        self.meter.addItem(tx("4/4 (רגיל)"), 4)
+        self.meter.addItem(tx("3/4 (ואלס)"), 3)
+        self.meter.addItem(tx("6/8 (מתנדנד)"), 6)
         cur = 0 if (settings.meter == 4 and settings.auto_meter) else settings.meter
         self.meter.setCurrentIndex(max(0, self.meter.findData(cur)))
-        f.addRow("משקל:", self.meter)
+        f.addRow(tx("משקל:"), self.meter)
         self.cpb = QComboBox()
-        self.cpb.addItem("שניים בתיבה", 2)
-        self.cpb.addItem("אחד בתיבה", 1)
+        self.cpb.addItem(tx("שניים בתיבה"), 2)
+        self.cpb.addItem(tx("אחד בתיבה"), 1)
         self.cpb.setCurrentIndex(0 if settings.chords_per_bar == 2 else 1)
-        f.addRow("החלפת אקורדים:", self.cpb)
+        f.addRow(tx("החלפת אקורדים:"), self.cpb)
         self.accomp_db = _slider(-12, 9, settings.accomp_db, _db)
         self.reverb = _slider(0, 200, settings.reverb, lambda x: f"{x}%")
-        f.addRow("עוצמת הליווי:", self.accomp_db)
-        f.addRow("הדהוד (ריוורב):", self.reverb)
+        f.addRow(tx("עוצמת הליווי:"), self.accomp_db)
+        f.addRow(tx("הדהוד (ריוורב):"), self.reverb)
         from .audio.mix import SPACE_NAMES
         self.space = QComboBox()
         for val, name in SPACE_NAMES.items():
             self.space.addItem(name, val)
         self.space.setCurrentIndex(max(0, self.space.findData(settings.space)))
-        f.addRow("גודל האולם:", self.space)
+        f.addRow(tx("גודל האולם:"), self.space)
         from .music.arrange import INTROS, ENDINGS
         self.intro, self.ending = QComboBox(), QComboBox()
         for box, names, cur in ((self.intro, INTROS, settings.intro), (self.ending, ENDINGS, settings.ending)):
-            box.addItem("לפי הסגנון (רגיל)", "auto")
+            box.addItem(tx("לפי הסגנון (רגיל)"), "auto")
             for val, name in names.items():
                 box.addItem(name, val)
             box.setCurrentIndex(max(0, box.findData(cur)))
-        self.intro.setToolTip("מה הכלי המוביל מנגן לפני שהזמר נכנס")
-        self.ending.setToolTip("איך השיר נגמר אחרי שהשירה מסתיימת")
-        f.addRow("הפתיח:", self.intro)
-        f.addRow("הסיום:", self.ending)
-        self.modulate = QCheckBox("עליית סולם (חצי טון) בפזמון האחרון - הקול והליווי עולים יחד")
+        self.intro.setToolTip(tx("מה הכלי המוביל מנגן לפני שהזמר נכנס"))
+        self.ending.setToolTip(tx("איך השיר נגמר אחרי שהשירה מסתיימת"))
+        f.addRow(tx("הפתיח:"), self.intro)
+        f.addRow(tx("הסיום:"), self.ending)
+        self.modulate = QCheckBox(tx("עליית סולם (חצי טון) בפזמון האחרון - הקול והליווי עולים יחד"))
         self.modulate.setChecked(bool(settings.modulate))
         f.addRow("", self.modulate)
         v.addWidget(g)
@@ -196,7 +198,7 @@ class AdvancedDialog(QDialog):
             from .music.styles import instruments_of, SWAPPABLE
             insts = instruments_of(style)
             if insts:
-                g = QGroupBox(f"כלי הנגינה בסגנון '{style.get('name', '')}'")
+                g = QGroupBox(tx("כלי הנגינה בסגנון '{0}'").format(style.get('name', '')))
                 f = QFormLayout(g)
                 cur = settings.swaps or {}
                 for inst in insts:
@@ -213,28 +215,28 @@ class AdvancedDialog(QDialog):
         self.sec_auto = []
         phrases = (info or {}).get("phrases") or []
         if phrases:
-            g = QGroupBox("חלקי השיר - בית או פזמון")
+            g = QGroupBox(tx("חלקי השיר - בית או פזמון"))
             f = QFormLayout(g)
-            h = QLabel("בבית הליווי רגוע, ובפזמון מלא וחזק. התוכנה מנחשת לבד - אפשר לשנות.")
+            h = QLabel(tx("בבית הליווי רגוע, ובפזמון מלא וחזק. התוכנה מנחשת לבד - אפשר לשנות."))
             h.setObjectName("small")
             h.setWordWrap(True)
             f.addRow(h)
             cur = settings.sections or []
             for i, (s, e, lvl) in enumerate(phrases):
                 cb = QComboBox()
-                cb.addItem("בית (רגוע)", 0)
-                cb.addItem("פזמון (מלא)", 1)
+                cb.addItem(tx("בית (רגוע)"), 0)
+                cb.addItem(tx("פזמון (מלא)"), 1)
                 cb.setCurrentIndex(int(cur[i]) if i < len(cur) else int(lvl))
-                f.addRow(f"משפט {i + 1}  (\u2066{int(s) // 60}:{int(s) % 60:02d}\u2069):", cb)
+                f.addRow(tx("משפט {0}  (⁦{1}:{2:02d}⁩):").format(i + 1, int(s) // 60, int(s) % 60), cb)
                 self.sec_boxes.append(cb)
                 self.sec_auto.append(int(lvl))
             v.addWidget(g)
 
         # ---- אקורדים
-        g = QGroupBox("אקורדים - למוזיקאים")
+        g = QGroupBox(tx("אקורדים - למוזיקאים"))
         gv = QVBoxLayout(g)
-        hint = QLabel("כתוב תיבה אחרי תיבה, מופרדות בקו ישר. כמה אקורדים באותה תיבה - עם רווח ביניהם. "
-                      "מקף = כמו האקורד הקודם. השאר ריק כדי שהתוכנה תבחר לבד. דוגמה:")
+        hint = QLabel(tx("כתוב תיבה אחרי תיבה, מופרדות בקו ישר. כמה אקורדים באותה תיבה - עם רווח ביניהם. "
+                      "מקף = כמו האקורד הקודם. השאר ריק כדי שהתוכנה תבחר לבד. דוגמה:"))
         hint.setObjectName("small")
         hint.setWordWrap(True)
         gv.addWidget(hint)
@@ -251,49 +253,49 @@ class AdvancedDialog(QDialog):
         self.chords.setMinimumHeight(110)
         gv.addWidget(self.chords)
         row = QHBoxLayout()
-        b_fill = QPushButton("הכנס את האקורדים שזוהו לעריכה")
+        b_fill = QPushButton(tx("הכנס את האקורדים שזוהו לעריכה"))
         b_fill.setEnabled(bool(info))
         b_fill.clicked.connect(lambda: self.chords.setPlainText(info["chords"]))
-        b_clear = QPushButton("נקה (אוטומטי)")
+        b_clear = QPushButton(tx("נקה (אוטומטי)"))
         b_clear.clicked.connect(self.chords.clear)
         row.addWidget(b_fill); row.addWidget(b_clear); row.addStretch()
         gv.addLayout(row)
         v.addWidget(g)
 
         # ---- שמירה
-        g = QGroupBox("שמירה")
+        g = QGroupBox(tx("שמירה"))
         f = QFormLayout(g)
         self.fmt = QComboBox()
         self.fmt.addItem("MP3", "mp3")
-        self.fmt.addItem("WAV (איכות מלאה)", "wav")
-        self.fmt.addItem("FLAC (איכות מלאה, קובץ קטן יותר)", "flac")
+        self.fmt.addItem(tx("WAV (איכות מלאה)"), "wav")
+        self.fmt.addItem(tx("FLAC (איכות מלאה, קובץ קטן יותר)"), "flac")
         self.fmt.setCurrentIndex(max(0, self.fmt.findData(fmt)))
-        self.extras = QCheckBox("שמור גם קול וליווי בקבצים נפרדים + קובץ MIDI")
+        self.extras = QCheckBox(tx("שמור גם קול וליווי בקבצים נפרדים + קובץ MIDI"))
         self.extras.setChecked(extras)
         from .audio.loudness import NAMES as LOUD_NAMES
         self.loudness = QComboBox()
         for val, name in LOUD_NAMES.items():
             self.loudness.addItem(name, val)
         self.loudness.setCurrentIndex(max(0, self.loudness.findData(settings.loudness)))
-        f.addRow("עוצמת השיר:", self.loudness)
+        f.addRow(tx("עוצמת השיר:"), self.loudness)
         self.artist = QLineEdit(artist or "")
-        self.artist.setPlaceholderText("נכתב בתוך קובץ ה-MP3 ומופיע בנגן")
-        f.addRow("שם הזמר:", self.artist)
-        f.addRow("סוג קובץ:", self.fmt)
+        self.artist.setPlaceholderText(tx("נכתב בתוך קובץ ה-MP3 ומופיע בנגן"))
+        f.addRow(tx("שם הזמר:"), self.artist)
+        f.addRow(tx("סוג קובץ:"), self.fmt)
         f.addRow("", self.extras)
         v.addWidget(g)
 
         # ---- כפתורים
         row = QHBoxLayout()
-        ok = QPushButton("אישור")
+        ok = QPushButton(tx("אישור"))
         ok.setStyleSheet("background:#2c7a3f; color:white; font-weight:bold;")
         ok.clicked.connect(self.accept)
-        reset = QPushButton("החזר הכול לרגיל")
+        reset = QPushButton(tx("החזר הכול לרגיל"))
         reset.clicked.connect(self.reset)
-        mine = QPushButton("⭐  שמור כטעם שלי")
-        mine.setToolTip("העוצמות, הניקוי, ההדהוד, הקול השני, הכלים וסוג הקובץ יהיו ברירת המחדל בכל שיר חדש")
+        mine = QPushButton(tx("⭐  שמור כטעם שלי"))
+        mine.setToolTip(tx("העוצמות, הניקוי, ההדהוד, הקול השני, הכלים וסוג הקובץ יהיו ברירת המחדל בכל שיר חדש"))
         mine.clicked.connect(lambda: self.done(3))
-        cancel = QPushButton("ביטול")
+        cancel = QPushButton(tx("ביטול"))
         cancel.clicked.connect(self.reject)
         row.addWidget(ok, 2); row.addWidget(mine, 2); row.addWidget(reset, 1); row.addWidget(cancel, 1)
         self._orig = settings

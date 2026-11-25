@@ -1,4 +1,5 @@
 """כל שלבי העבודה: ניקוי -> ניתוח -> תיקון קול -> ליווי -> ערבוב."""
+from .i18n import tx
 from dataclasses import dataclass
 import os
 
@@ -8,7 +9,7 @@ from .audio.denoise import denoise
 from .audio.psola import shift
 from .audio.mix import mix
 from .audio.fileio import save
-from .music.analysis import analyze, apply_settings, set_key, chords_as_text
+from .music.analysis import analyze, apply_settings, set_key, chords_as_text, tone
 from .music.arrange import render
 from .music.theory import key_name
 from . import midi
@@ -18,7 +19,7 @@ from . import midi
 class Settings:
     """הגדרות מתקדמות. ערכי ברירת המחדל = מה שמשתמש רגיל מקבל."""
     denoise: int = 100          # 0-100
-    tune: int = 80              # עוצמת תיקון הזיופים 0-100
+    tune: int = 100             # עוצמת תיקון הזיופים 0-100 (כל תו מוזז בשלמותו, ולכן גם תיקון מלא נשמע טבעי)
     key: tuple = None           # (טוניקה 0-11, 'major'/'minor'/'ahava'/'misheberach'/'adonai') או None = אוטומטי
     tempo_mode: str = "auto"    # auto / manual / free
     bpm: float = 0
@@ -68,12 +69,12 @@ class Song:
     def prepare(self, progress, settings=None):
         """שלבים שלא תלויים בסגנון - נעשים פעם אחת לכל שיר."""
         st = settings or Settings()
-        progress(2, "מנקה רעשי רקע...")
+        progress(2, tx("מנקה רעשי רקע..."))
         self.clean = denoise(self.raw, strength=st.denoise / 100,
                              progress=lambda p: progress(2 + p * 0.18, None))
         from .audio.polish import clean_up
         self.clean = clean_up(self.clean)             # קליקים ופיצוצי פ' / ב' מול המיקרופון
-        progress(22, "מזהה את המנגינה והקצב...")
+        progress(22, tx("מזהה את המנגינה והקצב..."))
         self.analysis = analyze(self.clean, progress=lambda p: progress(22 + p * 0.2, None))
         if self.grid:
             from .music.analysis import use_grid
@@ -153,7 +154,7 @@ class Song:
         if self.backing is not None:
             # שרים על פלייבק: הוא נשאר בסולם ובמבנה שלו, ולכן הקול לא עובר סולם ולא 'עולה' בסוף
             st = dataclasses.replace(st, transpose=0, modulate=False)
-            style = {"id": style.get("id"), "name": "פלייבק", "reverb": 0.2, "accomp_db": -3, "tracks": []}
+            style = {"id": style.get("id"), "name": tx("פלייבק"), "reverb": 0.2, "accomp_db": -3, "tracks": []}
         if self.analysis is None or self._prep != st.prep_key():
             self.prepare(progress, st)
         self._apply(st)
@@ -163,19 +164,19 @@ class Song:
             import dataclasses
             st = dataclasses.replace(st, harmony=voices.get("harmony", "three"),
                                      choir=voices.get("choir", st.choir))
-        progress(45, "מתקן את הקול...")
+        progress(45, tx("מתקן את הקול..."))
         self._retune(st)
         if st.harmony != "off":
-            progress(50, "מוסיף קול שני...")
+            progress(50, tx("מוסיף קול שני..."))
         self._make_harmony(st)
         if self.backing is not None:
             tracks, lead = [], 0.0
         else:
-            progress(55, "מוסיף ליווי...")
+            progress(55, tx("מוסיף ליווי..."))
             from .music.styles import apply_swaps
             style = self._open_close(apply_swaps(style, st.swaps), st)
             tracks, lead = render(self.analysis, style, progress=lambda p: progress(55 + p * 0.3, None))
-        progress(88, "מערבב את הקול והליווי...")
+        progress(88, tx("מערבב את הקול והליווי..."))
         style = dict(style, _tempo=float(self.analysis.tempo) if self.analysis.steady else 90.0)
         res = mix(self.tuned, tracks, lead, style, accomp_db=st.accomp_db,
                   voice_db=st.voice_db, reverb=st.reverb / 100, stems=self.keep_stems,
@@ -205,7 +206,7 @@ class Song:
             a.notes = list(self.analysis.notes[:4])
         a.chords = [c for c in a.chords if c[0] < cut + 4]
         a.duration = cut
-        progress(60, "מכין האזנה מהירה...")
+        progress(60, tx("מכין האזנה מהירה..."))
         from .music.styles import apply_swaps
         style = self._open_close(apply_swaps(style, st.swaps), st)
         style = dict(style, solo=False, ritardando=False, ending="short")
@@ -303,7 +304,7 @@ class Song:
         a = self.analysis
         from .music.arrange import MOD_UP
         mv = a.modulate_voice
-        melody = [(nt.start, nt.end, round(nt.pitch) + a.transpose
+        melody = [(nt.start, nt.end, tone(nt) + a.transpose
                    + (MOD_UP if mv is not None and nt.start >= mv else 0)) for nt in a.notes]
         p = os.path.join(folder, f"{base}.mid")
         midi.write(p, a.tempo if a.steady else 120.0, melody, self.last_tracks, self.last_lead)

@@ -1,5 +1,6 @@
 """ציון דיוק לשירה: כמה קרוב הזמר לצלילים הנקיים. משמש את מצב התרגול (ציון לכל משפט)
 ואת שילוב ההקלטות (באיזו הקלטה המשפט יצא נקי יותר)."""
+from ..i18n import tx
 import numpy as np
 from scipy.ndimage import median_filter
 
@@ -64,7 +65,7 @@ def phrase_report(analysis, slots):
         w = np.array([max(min(nt.end, e) - max(nt.start, s), 0.01) for nt in notes])
         dev = np.array([nt.pitch - _snap(nt.pitch, scale) for nt in notes])
         if not len(notes):
-            out.append({"score": None, "cents": 0.0, "worst": None, "text": "לא זוהו צלילים"})
+            out.append({"score": None, "cents": 0.0, "worst": None, "text": tx("לא זוהו צלילים")})
             continue
         score = 100.0 * (1.0 - float(np.average(np.minimum(np.abs(dev), FULL_MISS), weights=w)) / FULL_MISS)
         cents = 100.0 * float(np.average(dev, weights=w))
@@ -76,15 +77,15 @@ def phrase_report(analysis, slots):
 
 def _advice(score, cents):
     if score >= 88:
-        text = "מדויק מאוד"
+        text = tx("מדויק מאוד")
     elif score >= 72:
-        text = "טוב"
+        text = tx("טוב")
     else:
-        text = "כדאי לתרגל"
+        text = tx("כדאי לתרגל")
     if cents <= -12:
-        text += " · נוטה לרדת"
+        text += tx(" · נוטה לרדת")
     elif cents >= 12:
-        text += " · נוטה לעלות"
+        text += tx(" · נוטה לעלות")
     return text
 
 

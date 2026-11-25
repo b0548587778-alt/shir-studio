@@ -1,14 +1,16 @@
 """מסך ההקלטה: ספירה לאחור, שעון, ופס שמראה שהמיקרופון שומע."""
+from ..i18n import tx
+from ..i18n import direction
 from PySide6.QtCore import Signal
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QProgressBar, QPlainTextEdit
 
 from .common import big_button, label
 
-TITLE = "מקליט... שיר עכשיו"
-HINT = "הפס הירוק זז כשהמיקרופון שומע אותך"
-TOO_LOUD = "חזק מדי! התרחק מעט מהמיקרופון"
-NOT_HEARD = "לא שומע אותך - התקרב למיקרופון ובדוק שהוא מחובר"
+TITLE = tx("מקליט... שיר עכשיו")
+HINT = tx("הפס הירוק זז כשהמיקרופון שומע אותך")
+TOO_LOUD = tx("חזק מדי! התרחק מעט מהמיקרופון")
+NOT_HEARD = tx("לא שומע אותך - התקרב למיקרופון ובדוק שהוא מחובר")
 
 
 class RecordScreen(QWidget):
@@ -36,17 +38,17 @@ class RecordScreen(QWidget):
         self.lyrics.setStyleSheet("background: white; font-size: 24px; border: 2px solid #c9d2dc; "
                                   "border-radius: 10px; padding: 8px;")
         opt = self.lyrics.document().defaultTextOption()
-        opt.setTextDirection(Qt.RightToLeft)
+        opt.setTextDirection(direction())
         opt.setAlignment(Qt.AlignHCenter)
         self.lyrics.document().setDefaultTextOption(opt)
         self.lyrics.hide()
         v.addWidget(self.lyrics, 1)
         v.addStretch()
         h = QHBoxLayout()
-        b_stop = big_button("⏹  סיום", "red")
+        b_stop = big_button(tx("⏹  סיום"), "red")
         b_stop.setMinimumHeight(110)
         b_stop.clicked.connect(self.stop)
-        b_cancel = big_button("ביטול", "light")
+        b_cancel = big_button(tx("ביטול"), "light")
         b_cancel.clicked.connect(self.cancel)
         h.addWidget(b_stop, 3); h.addWidget(b_cancel, 1)
         v.addLayout(h)

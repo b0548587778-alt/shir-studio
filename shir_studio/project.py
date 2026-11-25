@@ -1,4 +1,5 @@
 """שמירת פרויקט (קובץ .shir) ועיבוד כמה שירים ברצף."""
+from .i18n import tx
 import dataclasses
 import io
 import json
@@ -99,12 +100,12 @@ def batch(paths, style, settings, out_folder, fmt="mp3", progress=None, load=Non
         def rep(pct, msg=None, i=i):
             if progress:
                 progress(int(100 * (i + pct / 100) / n),
-                         f"שיר {i + 1} מתוך {n}: {os.path.basename(p)}")
+                         tx("שיר {0} מתוך {1}: {2}").format(i + 1, n, os.path.basename(p)))
         try:
             song = Song(load(p))
             out = song.make(style, rep, dataclasses.replace(settings, key=None, chords_text=""))
             base = os.path.splitext(os.path.basename(p))[0]
-            dst = os.path.join(out_folder, f"{base} - {style.get('name', 'שיר')}.{fmt}")
+            dst = os.path.join(out_folder, "{0} - {1}.{2}".format(base, style.get("name") or tx("שיר"), fmt))
             if tagged:
                 save(dst, out, tags={"title": base, "artist": artist})
             else:

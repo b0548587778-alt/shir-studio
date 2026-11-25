@@ -1,4 +1,6 @@
 """בדיקת מיקרופון לפני ההקלטה: שרים כמה שניות, והתוכנה אומרת אם חלש מדי, חזק מדי או רועש."""
+from .i18n import tx
+from .i18n import direction
 import numpy as np
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QProgressBar
@@ -31,29 +33,29 @@ class MicMeter:
 class MicDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("בדיקת מיקרופון")
-        self.setLayoutDirection(Qt.RightToLeft)
+        self.setWindowTitle(tx("בדיקת מיקרופון"))
+        self.setLayoutDirection(direction())
         self.setStyleSheet(CSS + "QProgressBar { min-height: 34px; }")
         self.meter = MicMeter()
         self.recorder = Recorder()
         self.failed = None
         v = QVBoxLayout(self)
-        lab = QLabel("שיר כמה שניות בקול הרגיל שלך, מהמקום שבו תקליט - ואז שתוק רגע.\n"
-                     "התוכנה תגיד אם העוצמה מתאימה.")
+        lab = QLabel(tx("שיר כמה שניות בקול הרגיל שלך, מהמקום שבו תקליט - ואז שתוק רגע.\n"
+                     "התוכנה תגיד אם העוצמה מתאימה."))
         lab.setWordWrap(True)
         v.addWidget(lab)
         self.bar = QProgressBar()
         self.bar.setRange(0, 100)
         self.bar.setTextVisible(False)
         v.addWidget(self.bar)
-        self.result = QLabel("מקשיב...")
+        self.result = QLabel(tx("מקשיב..."))
         self.result.setWordWrap(True)
         self.result.setAlignment(Qt.AlignCenter)
         self.result.setStyleSheet("font-size:24px; font-weight:bold; padding:14px;")
         v.addWidget(self.result, 1)
-        again = QPushButton("בדוק שוב")
+        again = QPushButton(tx("בדוק שוב"))
         again.clicked.connect(self.restart)
-        close = QPushButton("סגור")
+        close = QPushButton(tx("סגור"))
         close.clicked.connect(self.accept)
         v.addWidget(again)
         v.addWidget(close)
@@ -71,7 +73,7 @@ class MicDialog(QDialog):
 
     def restart(self):
         self.meter = MicMeter()
-        self.result.setText("מקשיב...")
+        self.result.setText(tx("מקשיב..."))
         self.result.setStyleSheet("font-size:24px; font-weight:bold; padding:14px;")
 
     def tick(self):

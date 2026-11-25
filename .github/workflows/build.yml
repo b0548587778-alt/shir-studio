@@ -25,13 +25,20 @@ jobs:
       - name: Tests
         run: python -m pytest -q tests
       - name: Build exe
-        run: pyinstaller --noconfirm --windowed --name ShirStudio --icon assets\icon.ico --add-data "shir_studio\styles;shir_studio\styles" --add-data "assets;assets" --add-data "shir_studio\samples;shir_studio\samples" --add-data "shir_studio\models;shir_studio\models" --collect-binaries onnxruntime --exclude-module tkinter run.py
+        run: pyinstaller --noconfirm --windowed --name ShirStudio --icon assets\icon.ico --add-data "shir_studio\styles;shir_studio\styles" --add-data "assets;assets" --add-data "shir_studio\samples;shir_studio\samples" --add-data "shir_studio\models;shir_studio\models" --add-data "shir_studio\lang;shir_studio\lang" --collect-binaries onnxruntime --exclude-module tkinter run.py
       - name: Self test of built exe
         shell: pwsh
         run: |
           $p = Start-Process -FilePath dist\ShirStudio\ShirStudio.exe -ArgumentList "--selftest" -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "selftest failed" }
           if (-not (Test-Path "$env:TEMP\shir_selftest.mp3")) { throw "no output" }
+      - name: Build license maker (owner only tool, not part of the installer)
+        run: pyinstaller --noconfirm --windowed --onefile --name ShirStudio-LicenseMaker --exclude-module tkinter tools\license_maker.py
+      - name: Keep license maker as a private build file
+        uses: actions/upload-artifact@v4
+        with:
+          name: ShirStudio-LicenseMaker
+          path: dist/ShirStudio-LicenseMaker.exe
       - name: Build installer
         run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\ShirStudio.iss'
       - name: Publish download
