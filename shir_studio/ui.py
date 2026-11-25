@@ -957,8 +957,12 @@ class MainWindow(QMainWindow):
         """מותר לשמור? בגרסת ניסיון שנגמרה - מסבירים ומציעים להזין קוד."""
         if lic.can_save():
             return True
-        if self._ask(tx("גרסת הניסיון הסתיימה"),
-                     tx("שמרת כבר {0} שירים בגרסת הניסיון.\nכדי להמשיך לשמור שירים צריך קוד רישיון.\n\nיש לך קוד?").format(lic.TRIAL_SONGS), tx("כן, להזין קוד"), tx("לא עכשיו")):
+        if lic.status()["state"] == "expired":
+            title, text = tx("תוקף הרישיון הסתיים"), tx("כדי להמשיך לשמור שירים צריך לחדש את הרישיון.\n\nלפתוח את חלון הרישיון?")
+        else:
+            title = tx("גרסת הניסיון הסתיימה")
+            text = tx("שמרת כבר {0} שירים בגרסת הניסיון.\nכדי להמשיך לשמור שירים צריך רישיון.\n\nלפתוח את חלון הרישיון?").format(lic.TRIAL_SONGS)
+        if self._ask(title, text, tx("כן"), tx("לא עכשיו")):
             self.enter_license()
         return lic.can_save()
 

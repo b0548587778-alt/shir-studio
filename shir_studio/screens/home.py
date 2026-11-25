@@ -63,7 +63,7 @@ class HomeScreen(QWidget):
         v.addLayout(h2)
         lf = QHBoxLayout()
         self.lic_label = label("", "tiny")
-        self.b_license = big_button(tx("יש לי קוד רישיון"), "link")
+        self.b_license = big_button(tx("יש לי רישיון / לקבל רישיון"), "link")
         self.b_license.clicked.connect(self.license)
         self.b_lang = big_button(tx("שפה / שפּראַך / Language"), "link")
         self.b_lang.clicked.connect(self.language)
@@ -80,12 +80,20 @@ class HomeScreen(QWidget):
 
     def show_license(self, st):
         """st: מה ש-license.status() מחזיר."""
+        from ..licenseview import lic_date
         if st["licensed"]:
-            self.lic_label.setText(tx("גרסה מלאה · רשום על שם: {0}").format(st["name"]))
-            self.b_license.hide()
+            text = tx("גרסה מלאה · רשום על שם: {0} · בתוקף עד {1}").format(st["name"], lic_date(st["until"]))
+            if st["state"] == "grace":
+                text = tx("תוקף הרישיון הסתיים · צריך לחדש אותו · רשום על שם: {0}").format(st["name"])
+            self.lic_label.setText(text)
+            self.b_license.setText(tx("חידוש רישיון"))
+            self.b_license.setVisible(st["state"] == "grace")
         else:
-            if st["left"] > 0:
+            if st["state"] == "expired":
+                self.lic_label.setText(tx("תוקף הרישיון הסתיים · כדי לשמור שירים צריך לחדש אותו"))
+            elif st["left"] > 0:
                 self.lic_label.setText(tx("גרסת ניסיון · נשארו {0} שירים לשמירה").format(st["left"]))
             else:
-                self.lic_label.setText(tx("גרסת הניסיון הסתיימה · כדי לשמור שירים צריך קוד רישיון"))
+                self.lic_label.setText(tx("גרסת הניסיון הסתיימה · כדי לשמור שירים צריך רישיון"))
+            self.b_license.setText(tx("יש לי רישיון / לקבל רישיון"))
             self.b_license.show()
