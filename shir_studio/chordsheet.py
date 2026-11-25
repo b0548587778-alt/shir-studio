@@ -1,4 +1,5 @@
 """דף אקורדים להדפסה (PDF) - למי שרוצה ללוות את השיר בעצמו בגיטרה, בפסנתר או באורגן."""
+from .i18n import tx
 from . import APP_NAME
 from .music.analysis import NAMES, chord_bars
 from .music.theory import NOTE_NAMES, MODES
@@ -30,7 +31,7 @@ def stanzas(lyrics):
     return out
 
 
-def sheet_data(song, title="השיר שלי", lyrics=""):
+def sheet_data(song, title=tx("השיר שלי"), lyrics=""):
     """מה שכתוב בדף: סולם, קצב, והאקורדים תיבה אחרי תיבה, מחולקים לבית ולפזמון.
     האקורדים כתובים כפי שהם נשמעים - כולל העברת הסולם ועליית הסולם בסוף."""
     from .music.arrange import MOD_UP
@@ -59,17 +60,17 @@ def sheet_data(song, title="השיר שלי", lyrics=""):
             auto = phrases[i][2] if i < len(phrases) else 1
             kind = int(lv[i]) if i < len(lv) else int(auto)
             counts[kind] += 1
-            label = ("פזמון" if kind else "בית") + (f" {counts[kind]}" if counts[kind] > 1 else "")
+            label = (tx("פזמון") if kind else tx("בית")) + (f" {counts[kind]}" if counts[kind] > 1 else "")
             if a.modulate_at is not None and i < len(phrases) and abs(phrases[i][0] - a.modulate_at) < 0.05:
-                label += "  ·  עליית סולם (חצי טון)"
+                label += tx("  ·  עליית סולם (חצי טון)")
             sections.append((label, bars[p:p + 8]))
     else:
         sections.append(("", bars))
-    info = [f"סולם: {NOTE_NAMES[(a.tonic + tp) % 12]} {MODES[a.mode][0]}"]
+    info = [tx("סולם: {0} {1}").format(NOTE_NAMES[(a.tonic + tp) % 12], MODES[a.mode][0])]
     if a.steady:
-        info += [f"קצב: ⁦{int(round(a.tempo))} BPM⁩", f"משקל: ⁦{'6/8' if getattr(a, 'compound', False) else str(a.meter) + '/4'}⁩"]
+        info += [tx("קצב: ⁦{0} BPM⁩").format(int(round(a.tempo))), tx("משקל: ⁦{0}⁩").format('6/8' if getattr(a, 'compound', False) else str(a.meter) + '/4')]
     else:
-        info.append("קצב חופשי - כל אקורד נמשך כשתי שניות")
+        info.append(tx("קצב חופשי - כל אקורד נמשך כשתי שניות"))
     return {"title": title, "info": "   ·   ".join(info), "sections": sections, "lyrics": stanzas(lyrics)}
 
 
@@ -83,7 +84,7 @@ def as_text(data):
             lines.append("| " + " | ".join(bars[i:i + PER_ROW]) + " |")
         lines.append("")
     if data.get("lyrics"):
-        lines.append("[מילות השיר]")
+        lines.append(tx("[מילות השיר]"))
         for st in data["lyrics"]:
             lines += st + [""]
     return "\n".join(lines)
@@ -146,7 +147,7 @@ def write_pdf(path, data):
         if y + 60 + 3 * lh > H - 40:
             w.newPage()
             y = 0
-        text(y, 44, "מילות השיר", font(13, True), Qt.AlignRight, "#24466b")
+        text(y, 44, tx("מילות השיר"), font(13, True), Qt.AlignRight, "#24466b")
         y += 56
         for st in data["lyrics"]:
             if y + min(len(st), 4) * lh > H - 40:            # לא משאירים שורה בודדת של בית בתחתית הדף
@@ -159,5 +160,5 @@ def write_pdf(path, data):
                 text(y, lh, line, font(14), Qt.AlignRight)
                 y += lh
             y += 22
-    text(H - 30, 30, f"הודפס מתוך {APP_NAME}", font(9), color="#8a94a0")
+    text(H - 30, 30, tx("הודפס מתוך {0}").format(APP_NAME), font(9), color="#8a94a0")
     p.end()

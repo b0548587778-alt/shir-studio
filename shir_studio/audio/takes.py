@@ -1,5 +1,6 @@
 """שילוב הקלטות: שרים את השיר שוב על אותו ליווי, והתוכנה בוחרת לכל משפט את הביצוע הנקי יותר.
 שתי ההקלטות מיושרות בזמן (שתיהן מול אותו ליווי), ולכן אפשר להחליף משפט במשפט."""
+from ..i18n import tx
 import numpy as np
 from scipy.ndimage import uniform_filter1d
 
@@ -29,7 +30,7 @@ def boundaries(old, new):
     כך שאף אחת מהן לא נחתכת באמצע צליל גם אם הזמר נכנס קצת מוקדם או מאוחר."""
     ph = edit.voice_phrases(old)
     if not ph:
-        raise AudioError("לא זיהיתי משפטים בהקלטה.\nאי אפשר לשלב בין ההקלטות.")
+        raise AudioError(tx("לא זיהיתי משפטים בהקלטה.\nאי אפשר לשלב בין ההקלטות."))
     quiet = _env(old) + _env(new)
     cuts = [0]
     for (_, e), (s, _) in zip(ph[:-1], ph[1:]):
@@ -52,12 +53,12 @@ def best_of(old, new, scale=None, f0_old=None, progress=None):
     old = np.asarray(old, dtype=np.float32)
     new = _fit(new, len(old))
     cuts = boundaries(old, new)
-    rep(10, "מקשיב לשתי ההקלטות...")
+    rep(10, tx("מקשיב לשתי ההקלטות..."))
     if f0_old is None:
         f0_old = yin(old)[0]
     rep(40, None)
     f0_new = yin(new)[0]
-    rep(80, "בוחר את הביצוע הנקי לכל משפט...")
+    rep(80, tx("בוחר את הביצוע הנקי לכל משפט..."))
     d_old, d_new = deviation(f0_old, scale), deviation(f0_new, scale)
     # עוצמה אחת לכל ההקלטה החדשה (ולא לכל משפט) - כך הדינמיקה של הזמר נשמרת
     r_old, r_new = edit._active_rms(old), edit._active_rms(new)

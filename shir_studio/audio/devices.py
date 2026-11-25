@@ -1,4 +1,5 @@
 """הקלטה והשמעה דרך כרטיס הקול."""
+from ..i18n import tx
 import threading
 import numpy as np
 from .fileio import SR, AudioError
@@ -9,7 +10,7 @@ def _sd():
         import sounddevice as sd
         return sd
     except Exception:
-        raise AudioError("לא הצלחתי לגשת לכרטיס הקול של המחשב.\nהפעל מחדש את המחשב ונסה שוב.")
+        raise AudioError(tx("לא הצלחתי לגשת לכרטיס הקול של המחשב.\nהפעל מחדש את המחשב ונסה שוב."))
 
 
 CLIP = 0.985              # מעל זה כרטיס הקול כבר 'חותך' את הצליל
@@ -19,14 +20,14 @@ def mic_verdict(peak, loud, floor):
     """בדיקת מיקרופון. peak: השיא שנמדד, loud: העוצמה בזמן השירה, floor: העוצמה כששקט (רעש הרקע).
     מחזיר (מצב, הסבר): silent / quiet / loud / noisy / good."""
     if loud < 0.0015:
-        return "silent", "לא שומע אותך בכלל.\nבדוק שהמיקרופון מחובר, ושהוא לא מושתק."
+        return "silent", tx("לא שומע אותך בכלל.\nבדוק שהמיקרופון מחובר, ושהוא לא מושתק.")
     if peak >= CLIP:
-        return "loud", "חזק מדי - הקול נחתך ויישמע צרוד.\nהתרחק מעט מהמיקרופון, או הנמך את עוצמת המיקרופון במחשב."
+        return "loud", tx("חזק מדי - הקול נחתך ויישמע צרוד.\nהתרחק מעט מהמיקרופון, או הנמך את עוצמת המיקרופון במחשב.")
     if loud < 0.02:
-        return "quiet", "חלש מדי.\nהתקרב למיקרופון (כ-15 ס\"מ), או הגבר את עוצמת המיקרופון במחשב."
+        return "quiet", tx("חלש מדי.\nהתקרב למיקרופון (כ-15 ס\"מ), או הגבר את עוצמת המיקרופון במחשב.")
     if floor > 0.012 and floor > loud * 0.25:
-        return "noisy", "יש רעש רקע חזק (מאוורר, מזגן, רחוב).\nכדאי לסגור חלון או לכבות את מה שמרעיש, ולשיר קרוב יותר."
-    return "good", "מצוין! העוצמה מתאימה, אפשר להקליט."
+        return "noisy", tx("יש רעש רקע חזק (מאוורר, מזגן, רחוב).\nכדאי לסגור חלון או לכבות את מה שמרעיש, ולשיר קרוב יותר.")
+    return "good", tx("מצוין! העוצמה מתאימה, אפשר להקליט.")
 
 
 def clipped_share(data):
@@ -61,7 +62,7 @@ class Recorder:
         try:
             sd.query_devices(kind="input")
         except Exception:
-            raise AudioError("לא נמצא מיקרופון.\nחבר מיקרופון למחשב ונסה שוב.")
+            raise AudioError(tx("לא נמצא מיקרופון.\nחבר מיקרופון למחשב ונסה שוב."))
 
         def cb(indata, frames, t, status):
             mono = indata.mean(axis=1).copy()
@@ -75,9 +76,9 @@ class Recorder:
             self._stream = sd.InputStream(samplerate=SR, channels=1, dtype="float32", callback=cb)
             self._stream.start()
         except Exception:
-            raise AudioError("לא הצלחתי להפעיל את המיקרופון.\n"
+            raise AudioError(tx("לא הצלחתי להפעיל את המיקרופון.\n"
                              "בדוק שהמיקרופון מחובר ושאף תוכנה אחרת לא משתמשת בו.\n"
-                             "אם זה לא עוזר: פתח 'הגדרות' > 'פרטיות' > 'מיקרופון' ואפשר גישה.")
+                             "אם זה לא עוזר: פתח 'הגדרות' > 'פרטיות' > 'מיקרופון' ואפשר גישה."))
 
     def stop(self) -> np.ndarray:
         if self._stream:
@@ -136,8 +137,8 @@ class Overdub:
             self._stream.start()
         except Exception:
             self._stream = None
-            raise AudioError("לא הצלחתי להשמיע ולהקליט באותו זמן.\n"
-                             "בדוק שהמיקרופון והאוזניות מחוברים, ונסה שוב.")
+            raise AudioError(tx("לא הצלחתי להשמיע ולהקליט באותו זמן.\n"
+                             "בדוק שהמיקרופון והאוזניות מחוברים, ונסה שוב."))
 
     def stop(self) -> np.ndarray:
         if self._stream:
@@ -169,7 +170,7 @@ class Player:
             sd.stop()
             sd.play(data[int(start_sec * SR):], SR)
         except Exception:
-            raise AudioError("לא הצלחתי להשמיע.\nבדוק שהרמקולים או האוזניות מחוברים.")
+            raise AudioError(tx("לא הצלחתי להשמיע.\nבדוק שהרמקולים או האוזניות מחוברים."))
         self.data, self.offset, self.t0 = data, start_sec, time.time()
 
     def position(self):
@@ -235,7 +236,7 @@ class Metronome:
             self._stream.start()
         except Exception:
             self._stream = None
-            raise AudioError("לא הצלחתי להפעיל את המטרונום.\nבדוק שהרמקולים או האוזניות מחוברים.")
+            raise AudioError(tx("לא הצלחתי להפעיל את המטרונום.\nבדוק שהרמקולים או האוזניות מחוברים."))
 
     def stop(self):
         if self._stream:

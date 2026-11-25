@@ -1,4 +1,5 @@
 """מחרוזת: כמה שירים מחוברים לקובץ אחד, עם מעבר חלק בין שיר לשיר."""
+from .i18n import tx
 import dataclasses
 import os
 
@@ -30,7 +31,7 @@ def join(songs, crossfade=2.0):
     """מחבר שירים (מונו או סטריאו) לאחד: עוצמה אחידה, ומעבר שבו שיר אחד דועך והבא נכנס."""
     songs = [_trim(_stereo(s)) for s in songs if s is not None and len(s)]
     if not songs:
-        raise AudioError("לא נבחרו שירים למחרוזת.")
+        raise AudioError(tx("לא נבחרו שירים למחרוזת."))
     target = float(np.median([_rms(s) for s in songs]))
     out = None
     for s in songs:
@@ -61,7 +62,7 @@ def make_medley(paths, out_path, style=None, settings=None, process=False, cross
     for i, p in enumerate(paths):
         def rep(pct, msg=None, i=i):
             if progress:
-                progress(int(95 * (i + pct / 100) / n), f"שיר {i + 1} מתוך {n}: {os.path.basename(p)}")
+                progress(int(95 * (i + pct / 100) / n), tx("שיר {0} מתוך {1}: {2}").format(i + 1, n, os.path.basename(p)))
         rep(0)
         try:
             if process:
@@ -75,9 +76,9 @@ def make_medley(paths, out_path, style=None, settings=None, process=False, cross
         except Exception:                               # שיר אחד שנכשל לא עוצר את המחרוזת
             bad.append(p)
     if not songs:
-        raise AudioError("לא הצלחתי לפתוח אף אחד מהשירים.")
+        raise AudioError(tx("לא הצלחתי לפתוח אף אחד מהשירים."))
     if progress:
-        progress(96, "מחבר את השירים...")
+        progress(96, tx("מחבר את השירים..."))
     out = join(songs, crossfade)
     save(out_path, out)
     if progress:

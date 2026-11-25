@@ -1,0 +1,584 @@
+{
+ "name": "סימפוני",
+ "description": "תזמורת מלאה שמתפתחת לאורך השיר, עד שיא גדול בסוף",
+ "order": 0,
+ "reverb": 0.5,
+ "accomp_db": -4,
+ "rich_chords": true,
+ "arc": true,
+ "lead": "violin",
+ "double": {
+  "instrument": "strings",
+  "shift": 12,
+  "from": 0.9,
+  "volume": 0.42,
+  "pan": -0.3,
+  "v": 0.55
+ },
+ "tracks": [
+  {
+   "instrument": "slow_strings",
+   "octave": 4,
+   "volume": 0.7,
+   "pan": -0.25,
+   "bar": [
+    {
+     "t": 0,
+     "n": "chord",
+     "v": 0.5,
+     "d": 4
+    }
+   ],
+   "high": [
+    {
+     "t": 0,
+     "n": "chord",
+     "v": 0.62,
+     "d": 2
+    },
+    {
+     "t": 2,
+     "n": "chord",
+     "v": 0.58,
+     "d": 2
+    }
+   ]
+  },
+  {
+   "instrument": "strings",
+   "octave": 5,
+   "volume": 0.42,
+   "pan": -0.4,
+   "bar": [
+    {
+     "t": 0,
+     "n": "chord",
+     "v": 0.5,
+     "d": 4
+    }
+   ],
+   "from": 0.55
+  },
+  {
+   "instrument": "cello",
+   "octave": 2,
+   "volume": 0.65,
+   "pan": 0.3,
+   "bar": [
+    {
+     "t": 0,
+     "n": "root",
+     "v": 0.58,
+     "d": 2
+    },
+    {
+     "t": 2,
+     "n": "fifth_low",
+     "v": 0.52,
+     "d": 2
+    }
+   ],
+   "alt": [
+    {
+     "t": 0,
+     "n": "root",
+     "v": 0.58,
+     "d": 2
+    },
+    {
+     "t": 2,
+     "n": "third",
+     "v": 0.5,
+     "d": 1
+    },
+    {
+     "t": 3,
+     "n": "fifth",
+     "v": 0.5,
+     "d": 1
+    }
+   ]
+  },
+  {
+   "instrument": "acoustic_bass",
+   "octave": 2,
+   "volume": 0.7,
+   "pan": 0.1,
+   "bar": [
+    {
+     "t": 0,
+     "n": "root",
+     "v": 0.75,
+     "d": 1.8
+    },
+    {
+     "t": 2,
+     "n": "fifth_low",
+     "v": 0.6,
+     "d": 1.6
+    }
+   ],
+   "alt": [
+    {
+     "t": 0,
+     "n": "root",
+     "v": 0.75,
+     "d": 1.8
+    },
+    {
+     "t": 2,
+     "n": "root",
+     "v": 0.6,
+     "d": 0.9
+    },
+    {
+     "t": 3,
+     "n": "fifth_low",
+     "v": 0.6,
+     "d": 0.9
+    }
+   ],
+   "from": 0.45
+  },
+  {
+   "instrument": "harp",
+   "octave": 3,
+   "volume": 0.45,
+   "pan": 0.4,
+   "bar": [
+    {
+     "t": 0,
+     "n": "root_low",
+     "v": 0.5,
+     "d": 1.5
+    },
+    {
+     "t": 0.5,
+     "n": "fifth_low",
+     "v": 0.42,
+     "d": 1.2
+    },
+    {
+     "t": 1,
+     "n": "root",
+     "v": 0.46,
+     "d": 1.2
+    },
+    {
+     "t": 1.5,
+     "n": "third",
+     "v": 0.42,
+     "d": 1
+    },
+    {
+     "t": 2,
+     "n": "fifth",
+     "v": 0.46,
+     "d": 1.2
+    },
+    {
+     "t": 2.5,
+     "n": "octave",
+     "v": 0.42,
+     "d": 1
+    },
+    {
+     "t": 3,
+     "n": "third_hi",
+     "v": 0.42,
+     "d": 1
+    },
+    {
+     "t": 3.5,
+     "n": "fifth",
+     "v": 0.38,
+     "d": 0.8
+    }
+   ],
+   "alt": [
+    {
+     "t": 0,
+     "n": "root_low",
+     "v": 0.5,
+     "d": 1.5
+    },
+    {
+     "t": 0.5,
+     "n": "root",
+     "v": 0.42,
+     "d": 1.2
+    },
+    {
+     "t": 1,
+     "n": "fifth",
+     "v": 0.46,
+     "d": 1.2
+    },
+    {
+     "t": 1.5,
+     "n": "third_hi",
+     "v": 0.42,
+     "d": 1
+    },
+    {
+     "t": 2,
+     "n": "octave",
+     "v": 0.46,
+     "d": 1.2
+    },
+    {
+     "t": 2.5,
+     "n": "fifth",
+     "v": 0.42,
+     "d": 1
+    },
+    {
+     "t": 3,
+     "n": "third",
+     "v": 0.42,
+     "d": 1
+    },
+    {
+     "t": 3.5,
+     "n": "root",
+     "v": 0.38,
+     "d": 0.8
+    }
+   ],
+   "until": 0.95
+  },
+  {
+   "instrument": "piano",
+   "octave": 3,
+   "volume": 0.5,
+   "pan": 0.15,
+   "bar": [
+    {
+     "t": 0,
+     "n": "chord",
+     "v": 0.45,
+     "d": 2
+    },
+    {
+     "t": 2,
+     "n": "chord",
+     "v": 0.4,
+     "d": 2
+    }
+   ],
+   "high": [
+    {
+     "t": 0,
+     "n": "chord",
+     "v": 0.6,
+     "d": 1.4
+    },
+    {
+     "t": 1.5,
+     "n": "chord",
+     "v": 0.45,
+     "d": 0.9
+    },
+    {
+     "t": 2.5,
+     "n": "chord",
+     "v": 0.5,
+     "d": 0.9
+    },
+    {
+     "t": 3.5,
+     "n": "octave",
+     "v": 0.42,
+     "d": 0.5
+    }
+   ],
+   "from": 0.42
+  },
+  {
+   "instrument": "oboe",
+   "octave": 4,
+   "volume": 0.26,
+   "pan": 0.2,
+   "bar": [
+    {
+     "t": 0,
+     "n": "fifth",
+     "v": 0.45,
+     "d": 3.8
+    }
+   ],
+   "alt": [
+    {
+     "t": 0,
+     "n": "third",
+     "v": 0.45,
+     "d": 3.8
+    }
+   ],
+   "until": 0.9,
+   "from": 0.5
+  },
+  {
+   "instrument": "clarinet",
+   "octave": 4,
+   "volume": 0.26,
+   "pan": -0.1,
+   "bar": [
+    {
+     "t": 0,
+     "n": "third",
+     "v": 0.45,
+     "d": 3.8
+    }
+   ],
+   "alt": [
+    {
+     "t": 0,
+     "n": "root",
+     "v": 0.45,
+     "d": 3.8
+    }
+   ],
+   "from": 0.55
+  },
+  {
+   "instrument": "flute",
+   "octave": 5,
+   "volume": 0.26,
+   "pan": 0.3,
+   "bar": [
+    {
+     "t": 0,
+     "n": "third",
+     "v": 0.45,
+     "d": 3.8
+    }
+   ],
+   "alt": [
+    {
+     "t": 0,
+     "n": "fifth",
+     "v": 0.45,
+     "d": 3.8
+    }
+   ],
+   "from": 0.65
+  },
+  {
+   "instrument": "bassoon",
+   "octave": 2,
+   "volume": 0.3,
+   "pan": 0.15,
+   "bar": [
+    {
+     "t": 0,
+     "n": "root",
+     "v": 0.5,
+     "d": 3.8
+    }
+   ],
+   "from": 0.6
+  },
+  {
+   "instrument": "horn",
+   "octave": 3,
+   "volume": 0.45,
+   "pan": -0.15,
+   "bar": [
+    {
+     "t": 0,
+     "n": "third",
+     "v": 0.5,
+     "d": 3.8
+    }
+   ],
+   "high": [
+    {
+     "t": 0,
+     "n": "root",
+     "v": 0.62,
+     "d": 2
+    },
+    {
+     "t": 2,
+     "n": "fifth",
+     "v": 0.58,
+     "d": 1.9
+    }
+   ],
+   "from": 0.6
+  },
+  {
+   "instrument": "brass",
+   "octave": 3,
+   "volume": 0.32,
+   "pan": 0.25,
+   "bar": [
+    {
+     "t": 0,
+     "n": "chord",
+     "v": 0.62,
+     "d": 1.6
+    },
+    {
+     "t": 2,
+     "n": "chord",
+     "v": 0.55,
+     "d": 1.2
+    }
+   ],
+   "from": 0.97
+  },
+  {
+   "instrument": "timpani",
+   "octave": 2,
+   "volume": 0.4,
+   "pan": 0,
+   "bar": [
+    {
+     "t": 0,
+     "n": "root",
+     "v": 0.65,
+     "d": 0.8
+    }
+   ],
+   "high": [
+    {
+     "t": 0,
+     "n": "root",
+     "v": 0.75,
+     "d": 0.8
+    },
+    {
+     "t": 3.5,
+     "n": "root",
+     "v": 0.5,
+     "d": 0.3
+    }
+   ],
+   "from": 0.72
+  },
+  {
+   "instrument": "glockenspiel",
+   "octave": 5,
+   "volume": 0.16,
+   "pan": 0.35,
+   "bar": [
+    {
+     "t": 0,
+     "n": "third",
+     "v": 0.4,
+     "d": 1
+    },
+    {
+     "t": 2,
+     "n": "fifth",
+     "v": 0.35,
+     "d": 1
+    }
+   ],
+   "from": 0.72
+  },
+  {
+   "instrument": "drums",
+   "volume": 0.26,
+   "crash_on_phrase": true,
+   "bar": [
+    {
+     "t": 0,
+     "n": "kick",
+     "v": 0.5,
+     "d": 1
+    },
+    {
+     "t": 2,
+     "n": "kick",
+     "v": 0.4,
+     "d": 1
+    }
+   ],
+   "fill": [
+    {
+     "t": 3,
+     "n": "snare",
+     "v": 0.4
+    },
+    {
+     "t": 3.25,
+     "n": "snare",
+     "v": 0.5
+    },
+    {
+     "t": 3.5,
+     "n": "snare",
+     "v": 0.6
+    },
+    {
+     "t": 3.75,
+     "n": "snare",
+     "v": 0.7
+    }
+   ],
+   "from": 0.72
+  }
+ ],
+ "free": [
+  {
+   "instrument": "slow_strings",
+   "octave": 4,
+   "volume": 0.8,
+   "pan": -0.25,
+   "seg": [
+    {
+     "t": 0,
+     "d": "seg",
+     "n": "chord",
+     "v": 0.5
+    }
+   ]
+  },
+  {
+   "instrument": "cello",
+   "octave": 2,
+   "volume": 0.6,
+   "pan": 0.3,
+   "seg": [
+    {
+     "t": 0,
+     "d": "seg",
+     "n": "root",
+     "v": 0.55
+    }
+   ]
+  },
+  {
+   "instrument": "harp",
+   "octave": 3,
+   "volume": 0.5,
+   "pan": 0.35,
+   "seg": [
+    {
+     "t": 0.05,
+     "d": "seg",
+     "n": "chord",
+     "v": 0.5,
+     "strum": 0.07
+    }
+   ]
+  },
+  {
+   "instrument": "horn",
+   "octave": 3,
+   "volume": 0.3,
+   "pan": -0.15,
+   "seg": [
+    {
+     "t": 0.3,
+     "d": "seg",
+     "n": "fifth",
+     "v": 0.4
+    }
+   ]
+  }
+ ]
+}

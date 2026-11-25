@@ -1,6 +1,7 @@
 """הפרדת קול: מוציאה את השירה מתוך שיר מוכן (שירה + כלי נגינה), ומשאירה את הנגינה בנפרד.
 אפשר גם להפריד את הנגינה לתופים, בס ושאר הכלים.
 ההפרדה נעשית במודלים מסוג MDX-Net (פרויקט Ultimate Vocal Remover ו-KUIELab, רישיון MIT) שרצים בתוך המחשב."""
+from ..i18n import tx
 import os
 import sys
 
@@ -54,7 +55,7 @@ class Model:
     def session(self):
         if self.name not in _session:
             if not os.path.exists(self.path()) or not _engine():
-                raise AudioError("הפרדת הקול לא זמינה בהתקנה הזו.\nהתקן מחדש את התוכנה מקובץ ההתקנה העדכני.")
+                raise AudioError(tx("הפרדת הקול לא זמינה בהתקנה הזו.\nהתקן מחדש את התוכנה מקובץ ההתקנה העדכני."))
             import onnxruntime as ort
             opts = ort.SessionOptions()
             opts.log_severity_level = 3
@@ -96,7 +97,7 @@ class Model:
 VOCALS = Model("vocals", 7680, 3072, 256, 1.021)        # UVR-MDX-NET Voc FT
 DRUMS = Model("drums", 4096, 2048, 512, 1.035)          # kuielab_a_drums
 BASS = Model("bass", 16384, 2048, 512, 1.035)           # kuielab_a_bass
-STEM_NAMES = ("שירה", "תופים", "בס", "כלים אחרים")
+STEM_NAMES = (tx("שירה"), tx("תופים"), tx("בס"), tx("כלים אחרים"))
 
 # ההגדרות של מודל השירה - בשמות הקצרים שלהן
 N_FFT, DIM_F, DIM_T, COMPENSATE = VOCALS.n_fft, VOCALS.dim_f, VOCALS.dim_t, VOCALS.compensate
@@ -131,7 +132,7 @@ def _stereo(stereo):
     if x.ndim == 1:
         x = np.stack([x, x], axis=1)
     if len(x) < SR:
-        raise AudioError("הקובץ קצר מדי להפרדה.")
+        raise AudioError(tx("הקובץ קצר מדי להפרדה."))
     return x
 
 

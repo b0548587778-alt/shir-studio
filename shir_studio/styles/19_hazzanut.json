@@ -1,0 +1,179 @@
+{
+ "name": "חזנות",
+ "description": "ליווי מכובד לתפילה ולפרקי חזנות: עוגב, מיתרים רכים וצ'לו שהולכים אחרי החזן",
+ "order": 18,
+ "reverb": 0.6,
+ "accomp_db": -6,
+ "rich_chords": false,
+ "arc": true,
+ "lead": "cello",
+ "solo": false,
+ "ritardando": true,
+ "ending": "short",
+ "intro_kind": "short",
+ "tracks": [
+  {
+   "instrument": "organ",
+   "octave": 4,
+   "volume": 0.45,
+   "pan": 0,
+   "bar": [
+    {
+     "t": 0,
+     "n": "chord",
+     "v": 0.45,
+     "d": 4
+    }
+   ]
+  },
+  {
+   "instrument": "slow_strings",
+   "octave": 4,
+   "volume": 0.6,
+   "pan": -0.25,
+   "bar": [
+    {
+     "t": 0,
+     "n": "chord",
+     "v": 0.45,
+     "d": 4
+    }
+   ],
+   "from": 0.4
+  },
+  {
+   "instrument": "cello",
+   "octave": 2,
+   "volume": 0.6,
+   "pan": 0.25,
+   "bar": [
+    {
+     "t": 0,
+     "n": "root",
+     "v": 0.55,
+     "d": 4
+    }
+   ],
+   "alt": [
+    {
+     "t": 0,
+     "n": "root",
+     "v": 0.55,
+     "d": 2
+    },
+    {
+     "t": 2,
+     "n": "fifth_low",
+     "v": 0.5,
+     "d": 2
+    }
+   ]
+  },
+  {
+   "instrument": "acoustic_bass",
+   "octave": 2,
+   "volume": 0.5,
+   "pan": 0.1,
+   "bar": [
+    {
+     "t": 0,
+     "n": "root",
+     "v": 0.6,
+     "d": 3.5
+    }
+   ],
+   "from": 0.6
+  },
+  {
+   "instrument": "harp",
+   "octave": 3,
+   "volume": 0.35,
+   "pan": 0.4,
+   "bar": [
+    {
+     "t": 0,
+     "n": "chord",
+     "v": 0.45,
+     "d": 3,
+     "strum": 0.06
+    }
+   ],
+   "from": 0.5
+  },
+  {
+   "instrument": "horn",
+   "octave": 3,
+   "volume": 0.3,
+   "pan": -0.15,
+   "bar": [
+    {
+     "t": 0,
+     "n": "fifth",
+     "v": 0.45,
+     "d": 3.8
+    }
+   ],
+   "from": 0.8
+  },
+  {
+   "instrument": "timpani",
+   "octave": 2,
+   "volume": 0.3,
+   "pan": 0,
+   "bar": [
+    {
+     "t": 0,
+     "n": "root",
+     "v": 0.55,
+     "d": 0.8
+    }
+   ],
+   "from": 0.95
+  }
+ ],
+ "free": [
+  {
+   "instrument": "organ",
+   "octave": 4,
+   "volume": 0.45,
+   "pan": 0,
+   "seg": [
+    {
+     "t": 0,
+     "d": "seg",
+     "n": "chord",
+     "v": 0.45
+    }
+   ]
+  },
+  {
+   "instrument": "slow_strings",
+   "octave": 4,
+   "volume": 0.6,
+   "pan": -0.25,
+   "seg": [
+    {
+     "t": 0.1,
+     "d": "seg",
+     "n": "chord",
+     "v": 0.45
+    }
+   ]
+  },
+  {
+   "instrument": "cello",
+   "octave": 2,
+   "volume": 0.6,
+   "pan": 0.25,
+   "seg": [
+    {
+     "t": 0,
+     "d": "seg",
+     "n": "root",
+     "v": 0.55
+    }
+   ]
+  }
+ ],
+ "brass_hits": false
+}

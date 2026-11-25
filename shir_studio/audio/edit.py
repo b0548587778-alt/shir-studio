@@ -1,4 +1,5 @@
 """עריכת ההקלטה לפני העיבוד: חיתוך שקט, גזירת קטע, והחלפת משפט אחד בהקלטה חדשה."""
+from ..i18n import tx
 import numpy as np
 
 from .fileio import SR, AudioError
@@ -65,7 +66,7 @@ def cut(x, start, end):
     """גוזר קטע מההקלטה (בשניות), עם כניסה ויציאה רכות."""
     a, b = max(0, int(start * SR)), min(len(x), int(end * SR))
     if b - a < 2 * SR:
-        raise AudioError("הקטע שנבחר קצר מדי.\nצריך לפחות שתי שניות של שירה.")
+        raise AudioError(tx("הקטע שנבחר קצר מדי.\nצריך לפחות שתי שניות של שירה."))
     return _fade(np.array(x[a:b], dtype=np.float32))
 
 
@@ -98,7 +99,7 @@ def splice_take(raw, slot_start, slot_end, take):
     i0, i1 = max(0, int(slot_start * SR)), min(len(raw), int(slot_end * SR))
     ph = voice_phrases(take, min_len=0.15)
     if i1 - i0 < SR // 4 or not ph:
-        raise AudioError("לא שמעתי שירה בהקלטה החדשה.\nנסה שוב, קרוב יותר למיקרופון.")
+        raise AudioError(tx("לא שמעתי שירה בהקלטה החדשה.\nנסה שוב, קרוב יותר למיקרופון."))
     pad = int(0.08 * SR)
     seg = np.array(take[max(0, int(ph[0][0] * SR) - pad): int(ph[-1][1] * SR) + pad], dtype=np.float32)
     old = raw[i0:i1]

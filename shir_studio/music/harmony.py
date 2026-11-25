@@ -4,6 +4,7 @@ from scipy.ndimage import gaussian_filter1d
 
 from ..audio.pitch import FRAME_SEC
 from .theory import MODES
+from .analysis import tone
 
 
 def _scale7(tonic, mode):
@@ -24,7 +25,7 @@ def harmony_shift(a, mode="auto"):
     scale = _scale7(a.tonic, a.mode)
     prev = 4.0
     for nt in a.notes:
-        m = int(round(nt.pitch))
+        m = tone(nt)
         ch = _chord_at(a.chords, (nt.start + nt.end) / 2)
         below = mode == "below" or (mode == "auto" and m + a.transpose > 76)
         cands = (-3, -4, -5) if below else (3, 4, 5)

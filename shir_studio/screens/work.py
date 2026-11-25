@@ -1,11 +1,12 @@
 """מסך ההמתנה בזמן שהשיר מוכן."""
+from ..i18n import tx
 import time
 
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QProgressBar
 
 from .common import label
 
-TITLE = "מכין את השיר..."
+TITLE = tx("מכין את השיר...")
 
 
 def eta_text(elapsed, percent):
@@ -14,11 +15,11 @@ def eta_text(elapsed, percent):
         return ""
     left = elapsed * (100 - percent) / percent
     if left < 8:
-        return "עוד רגע..."
+        return tx("עוד רגע...")
     if left < 50:
-        return f"נשארו בערך {int(round(left / 5) * 5)} שניות"
+        return tx("נשארו בערך {0} שניות").format(int(round(left / 5) * 5))
     m = int(round(left / 60))
-    return "נשארה בערך דקה" if m <= 1 else f"נשארו בערך {m} דקות"
+    return tx("נשארה בערך דקה") if m <= 1 else tx("נשארו בערך {0} דקות").format(m)
 
 
 class WorkScreen(QWidget):
@@ -30,7 +31,7 @@ class WorkScreen(QWidget):
         v.addStretch()
         self.title = label(TITLE, "title")
         v.addWidget(self.title)
-        v.addWidget(label("זה ייקח רגע. אין צורך ללחוץ על כלום.", "hint"))
+        v.addWidget(label(tx("זה ייקח רגע. אין צורך ללחוץ על כלום."), "hint"))
         self.bar = QProgressBar()
         self.bar.setRange(0, 100)
         self.bar.setFormat("%p%")

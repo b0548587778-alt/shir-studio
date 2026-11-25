@@ -1,4 +1,5 @@
 """עיבוד הקול, הדהוד (ריוורב), ערבוב ומגביל עוצמה."""
+from ..i18n import tx
 import numpy as np
 from scipy.signal import butter, sosfiltfilt, oaconvolve, sosfilt
 from scipy.ndimage import maximum_filter1d, uniform_filter1d
@@ -235,7 +236,7 @@ def pan_gains(p):
 
 
 SPACES = {"room": (0.7, 0.9), "hall": (1.6, 2.0), "big": (2.7, 3.3)}      # אורך ההדהוד: (קול, ליווי) בשניות
-SPACE_NAMES = {"auto": "אולם (רגיל)", "room": "חדר קטן ואינטימי", "big": "אולם גדול / בית כנסת גדול"}
+SPACE_NAMES = {"auto": tx("אולם (רגיל)"), "room": tx("חדר קטן ואינטימי"), "big": tx("אולם גדול / בית כנסת גדול")}
 
 
 def mix(voice, tracks, lead, style, accomp_db=0.0, voice_db=0.0, reverb=1.0, stems=False, harmony=None, choir=False,
@@ -304,8 +305,13 @@ def mix(voice, tracks, lead, style, accomp_db=0.0, voice_db=0.0, reverb=1.0, ste
         acc *= target / max(ar, 1e-9)
         # הנמכה קלה של הליווי כשיש שירה
         venv = uniform_filter1d(np.abs(vbuf), int(0.2 * SR))
-        duck = 1 - 0.25 * np.clip(venv / (vr + 1e-9), 0, 1)
-        acc *= duck[:, None]
+        amt = np.clip(venv / (vr + 1e-9), 0, 1).astype(np.float32)
+        acc *= (1 - 0.25 * amt)[:, None]
+        # 'מקום לקול': בזמן השירה הליווי מפנה מעט את תחום התדרים שבו יושב הקול (1-4 קילוהרץ),
+        # כך הקול ברור בלי שהליווי כולו יונמך - והשניים נשמעים כהקלטה אחת
+        sos_mid = butter(2, [1000, 4000], btype="band", fs=SR, output="sos")
+        for c in range(2):
+            acc[:, c] -= (0.35 * amt) * sosfiltfilt(sos_mid, acc[:, c]).astype(np.float32)
     rv = style.get("reverb", 0.2) * reverb
     vst = (np.stack([vbuf, vbuf], axis=1) * 0.707).astype(np.float32)
     pans = (0.35, -0.35)
@@ -349,6 +355,6 @@ def mix(voice, tracks, lead, style, accomp_db=0.0, voice_db=0.0, reverb=1.0, ste
     out[-fade:] *= np.linspace(1, 0, fade)[:, None]
     if stems:
         k = len(out)
-        return out.astype(np.float32), {"קול": (vst[:k] * g).astype(np.float32),
-                                        "ליווי": (acc[:k] * g).astype(np.float32)}
+        return out.astype(np.float32), {tx("קול"): (vst[:k] * g).astype(np.float32),
+                                        tx("ליווי"): (acc[:k] * g).astype(np.float32)}
     return out.astype(np.float32)

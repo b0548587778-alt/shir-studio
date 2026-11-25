@@ -1,3 +1,5 @@
+from .i18n import tx
+from .i18n import direction
 import sys
 import traceback
 
@@ -48,11 +50,22 @@ def main():
         selftest()
         return
     app = QApplication(sys.argv)
-    app.setLayoutDirection(Qt.RightToLeft)
+    from . import i18n
+    if i18n.saved_language() is None and "--no-language-question" not in sys.argv:
+        # הפעלה ראשונה: שואלים באיזו שפה להציג את התוכנה (לפני שכל שאר המסכים נטענים)
+        from .langview import LanguageDialog
+        dlg = LanguageDialog()
+        dlg.exec()
+        code = dlg.code or "he"
+        i18n.save_language(code)
+        i18n.set_language(code)
+        import shir_studio
+        shir_studio.APP_NAME = i18n.tx(tx("שיר סטודיו"))
+    app.setLayoutDirection(direction())
 
     def hook(t, v, tb):
         log_error("".join(traceback.format_exception(t, v, tb)))
-        QMessageBox.warning(None, "שים לב", "משהו השתבש.\nנסה שוב. אם זה חוזר, סגור את התוכנה ופתח אותה מחדש.")
+        QMessageBox.warning(None, tx("שים לב"), tx("משהו השתבש.\nנסה שוב. אם זה חוזר, סגור את התוכנה ופתח אותה מחדש."))
     sys.excepthook = hook
 
     import os

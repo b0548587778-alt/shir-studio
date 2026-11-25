@@ -1,4 +1,5 @@
 """ניתוח השירה: כיוון, סולם, תיקון זיופים, תווים, קצב ואקורדים."""
+from ..i18n import tx
 from dataclasses import dataclass, field
 import numpy as np
 from scipy.ndimage import median_filter, uniform_filter1d, gaussian_filter1d
@@ -13,6 +14,12 @@ class Note:
     start: float
     end: float
     pitch: float      # midi אחרי פיצוי כיוון (שלם = צליל נקי)
+    target: int = None   # הצליל שהזמר התכוון אליו - נקבע לפי המנגינה כולה (ראה melody_targets)
+
+
+def tone(nt):
+    """הצליל ה'נקי' של תו: היעד שנקבע לפי המנגינה, ואם עוד לא נקבע - העיגול הפשוט."""
+    return int(nt.target) if nt.target is not None else int(round(nt.pitch))
 
 
 @dataclass
@@ -32,8 +39,9 @@ class Analysis:
     duration: float = 0.0
     keys: list = field(default_factory=list)     # סולמות חלופיים לפי סדר התאמה
     key_index: int = 0
-    strength: float = 0.8
+    strength: float = 1.0
     curve_term: np.ndarray = None
+    consensus: np.ndarray = None  # גובה כל תו בממוצע על פני החזרות שלו בשיר
     meter: int = 4                # פעמות בתיבה
     chords_per_bar: int = 2
     transpose: int = 0
@@ -109,6 +117,143 @@ def _snap(center, scale):
     return near
 
 
+def repeat_consensus(notes, contour):
+    """שיר חוזר על עצמו (בית שני, פזמון חוזר). זמר לא מדויק טועה בכל חזרה אחרת, ולכן הממוצע של
+    החזרות קרוב יותר למה שהתכוון. מחפשים מרחקי זמן שבהם המנגינה חוזרת (קו הגובה דומה לעצמו),
+    ולכל תו מחזירים את הגובה הממוצע שלו ושל 'התאומים' שלו בחזרות האחרות.
+    contour: גובה הצליל לכל 10ms (NaN = אין צליל)."""
+    ps = np.array([nt.pitch for nt in notes])
+    step = 5                                              # עובדים ברזולוציה של 50ms
+    n = len(contour) // step
+    if len(notes) < 8 or n < 160:
+        return ps
+    c = np.asarray(contour[: n * step], dtype=float).reshape(n, step)
+    ok = np.isfinite(c).sum(axis=1) >= 3
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")                   # שורות שכולן שקט - מותר
+        c = np.where(ok, np.nanmedian(c, axis=1), np.nan)
+    v = np.isfinite(c)
+    cz = np.where(v, c, 0.0)
+    # שלב 1: באילו מרחקים (בשניות) השיר כולו דומה לעצמו
+    lags = np.arange(60, n - 60)                          # מ-3 שניות
+    dist = np.full(len(lags), np.inf)
+    for q, L in enumerate(lags):
+        both = v[:-L] & v[L:]
+        if both.sum() < 60:                               # לפחות 3 שניות של שירה משותפת
+            continue
+        d = cz[L:][both] - cz[:-L][both]
+        dist[q] = np.mean(np.abs(d - np.median(d)))
+    cand = [int(lags[q]) for q in range(1, len(lags) - 1)
+            if dist[q] < 0.75 and dist[q] <= dist[q - 1] and dist[q] <= dist[q + 1]]
+    cand = sorted(cand, key=lambda L: dist[L - 60])[:6]
+    if not cand:
+        return ps
+    acc, cnt = ps.copy(), np.ones(len(notes))
+    W = 40                                                # חלון של 2 שניות מכל צד של התו
+    for i, nt in enumerate(notes):
+        a, b = int(nt.start * 20), max(int(nt.end * 20), int(nt.start * 20) + 1)
+        lo, hi = max(0, a - W), min(n, b + W)
+        for L0 in cand:
+            for sgn in (1, -1):
+                best = None
+                for L in range(sgn * L0 - 6, sgn * L0 + 7):           # הקצב לא מדויק: עד 0.3 שנייה לכל כיוון
+                    if lo + L < 0 or hi + L > n or a + L < 0 or b + L > n:
+                        continue
+                    both = v[lo:hi] & v[lo + L:hi + L]
+                    if both.sum() < 0.5 * max(v[lo:hi].sum(), 1) or both.sum() < 12:
+                        continue
+                    d = cz[lo + L:hi + L][both] - cz[lo:hi][both]
+                    off = float(np.median(d))
+                    sc = float(np.mean(np.abs(d - off)))
+                    if abs(off) < 0.7 and sc < 0.6 and (best is None or sc < best[0]):
+                        best = (sc, L, off)
+                if best is None:
+                    continue
+                seg = c[a + best[1]: b + best[1]]
+                if np.isfinite(seg).sum() >= max(1, (b - a) // 2):
+                    acc[i] += float(np.nanmedian(seg)) - best[2]
+                    cnt[i] += 1
+    return acc / cnt
+
+
+def melody_targets(notes, scale, avg=None):
+    """לאיזה צליל התכוון הזמר בכל תו - לפי המנגינה כולה ולא לפי כל תו בנפרד.
+    זמר לא מדויק טועה בגובה המוחלט, אבל ה'קפיצות' שלו בין תו לתו אמינות יותר; וגם מי שמזייף
+    שר בדרך כלל צלילים מהסולם. לכן בוחרים (בתכנות דינמי) רצף צלילים שגם קרוב למה שהושר,
+    גם שומר על המרווחים שהושרו, וגם נשאר בסולם. מעדכן את nt.target של כל תו."""
+    if not notes:
+        return []
+    scale = set(scale)
+    cands, em = [], []
+    avg = np.array([nt.pitch for nt in notes]) if avg is None else avg
+    for nt, pc in zip(notes, avg):
+        base = int(np.floor(pc))
+        cs = [base - 1, base, base + 1, base + 2]
+        dur = min(nt.end - nt.start, 1.0)
+        e = []
+        for c in cs:
+            d = abs(pc - c)
+            cost = (d / 0.45) ** 2
+            if c % 12 not in scale:
+                # צליל מחוץ לסולם מתקבל רק כשהזמר פגע בו ממש בדיוק, בתו ארוך
+                cost += 1.2 if (d < 0.2 and dur > 0.2) else 4.0
+            e.append(-cost * (0.5 + dur))
+        cands.append(cs)
+        em.append(np.array(e))
+    score = em[0].copy()
+    back = []
+    for i in range(1, len(notes)):
+        a, b = notes[i - 1], notes[i]
+        sung = avg[i] - avg[i - 1]
+        joined = b.start - a.end < 0.35                    # אותו משפט: המרווח שהושר אמין
+        wgt = 1.0 if joined else 0.35
+        tr = np.zeros((4, 4))
+        for x, ca in enumerate(cands[i - 1]):
+            for y, cb in enumerate(cands[i]):
+                tr[x, y] = -wgt * ((sung - (cb - ca)) / 0.5) ** 2
+        tot = score[:, None] + tr
+        bk = np.argmax(tot, axis=0)
+        score = tot[bk, np.arange(4)] + em[i]
+        back.append(bk)
+    k = int(np.argmax(score))
+    path = [k]
+    for bk in reversed(back):
+        k = int(bk[k])
+        path.append(k)
+    path.reverse()
+    out = [cands[i][k] for i, k in enumerate(path)]
+    for nt, t in zip(notes, out):
+        nt.target = int(t)
+    return out
+
+
+def joint_tuning_key(notes, final_pitch=None):
+    """הכיוון של הזמר והסולם - נקבעים יחד. כשהשירה לא מדויקת אי אפשר לדעת את הכיוון לפני הסולם
+    (ממוצע של זיופים הוא רעש), וגם לא את הסולם לפני הכיוון; לכן בודקים כל היסט כיוון אפשרי עם כל סולם,
+    ובוחרים את הזוג שבו הצלילים שהושרו יושבים הכי טוב על צלילי הסולם.
+    מחזיר (היסט בחצאי טונים, משקלי 12 הצלילים בהיסט הזה, דירוג הסולמות)."""
+    ps = np.array([nt.pitch for nt in notes])
+    du = np.array([min(nt.end - nt.start, 2.0) for nt in notes])
+    best = None
+    for delta in np.arange(-0.5, 0.5, 0.05):
+        q = ps - delta
+        near = np.round(q)
+        fit = np.exp(-0.5 * ((q - near) / 0.25) ** 2)
+        w = np.zeros(12)
+        np.add.at(w, near.astype(int) % 12, du * fit)
+        fpc = int(round(final_pitch - delta)) % 12 if final_pitch is not None else None
+        ranked = theory.rank_keys(w, fpc)
+        # כמה מהשירה יושבת על צלילי הסולם הנבחר (ולא ביניהם או מחוץ לו)
+        sc_pcs = set(theory.scale_pcs(ranked[0][0], ranked[0][1]))
+        inside = np.array([int(n) % 12 in sc_pcs for n in near])
+        cover = float(np.sum(du * fit * inside) / (np.sum(du) + 1e-9))
+        total = ranked[0][2] + 0.8 * cover - 0.15 * abs(delta)      # בספק - נשארים קרוב לכיוון שנמדד
+        if best is None or total > best[0]:
+            best = (total, float(delta), w, ranked)
+    return best[1], best[2], best[3]
+
+
 def note_key(nt):
     """מזהה קבוע של צליל (לפי רגע ההתחלה) - לשמירת תיקונים ידניים."""
     return str(int(round(nt.start * 100)))
@@ -130,19 +275,24 @@ def note_targets(a):
     out = []
     for nt in a.notes:
         ed = note_edit(a.note_edits, nt)
-        auto = _snap(nt.pitch, scale)
+        auto = tone(nt) if nt.target is not None else _snap(nt.pitch, scale)
         tgt = nt.pitch if ed == "off" else auto + (int(ed) if ed is not None else 0)
         out.append((nt.start, nt.end, nt.pitch, tgt, note_key(nt), auto))
     return out
 
 
+GLIDE = 6          # החלקת המעבר בין תיקון של תו לתיקון של התו הבא (פריימים של 10ms): מעבר חד מדי נשמע 'רובוטי'
+
+
 def _targets(mc, voiced, notes, scale, strength, edits=None):
-    """תיקון לכל צליל בשלמותו - שומר על הוויברטו והגלישות הטבעיות."""
+    """תיקון לכל צליל בשלמותו - שומר על הוויברטו והגלישות הטבעיות.
+    בנוסף, תו ארוך ש'נוזל' (מתחיל נכון ויורד, או מטפס לאט אל הצליל) מיושר בעדינות: רק התנועה
+    האיטית מתוקנת, והוויברטו והסלסול (תנועה מהירה) נשארים כמו שהזמר שר אותם."""
     corr = np.zeros(len(mc))
     inside = np.zeros(len(mc), bool)
     for nt in notes:
         a, b = int(round(nt.start / FRAME_SEC)), int(round(nt.end / FRAME_SEC))
-        target = _snap(nt.pitch, scale)
+        target = tone(nt) if nt.target is not None else _snap(nt.pitch, scale)
         dev = target - nt.pitch
         inside[a:b] = True                        # גם צליל מדויק (בלי תיקון) הוא 'עוגן' למעברים
         ed = note_edit(edits, nt)
@@ -151,11 +301,14 @@ def _targets(mc, voiced, notes, scale, strength, edits=None):
         if ed is not None:                        # המשתמש גרר את הצליל - מתקנים בדיוק לשם
             corr[a:b] = target + int(ed) - nt.pitch
             continue
-        if abs(dev) < 0.08:
-            continue
-        # צליל שנמצא בדיוק באמצע בין שני צלילים - לא בטוח מה התכוון הזמר, מתקנים פחות
-        sure = float(np.clip((0.5 - abs(dev)) / 0.2, 0.3, 1.0))
-        corr[a:b] = dev * strength * sure
+        if abs(dev) >= 0.05:
+            corr[a:b] = dev * strength
+        n = b - a
+        if n >= 30:                               # תו של 0.3 שניות ומעלה: יישור ה'נזילה' האיטית
+            seg = mc[a:b] - nt.pitch
+            slow = gaussian_filter1d(seg, 14, mode="nearest")      # מתחת ל~1.5 הרץ; ויברטו (5-6 הרץ) לא נכלל
+            ramp = np.minimum(1.0, np.arange(n) / 8.0) * np.minimum(1.0, np.arange(n)[::-1] / 8.0)
+            corr[a:b] -= 0.7 * strength * np.clip(slow, -1.0, 1.0) * ramp
     # מעברים טבעיים: בין שני צלילים מחוברים (לגאטו) התיקון עובר בהדרגה מהאחד לשני,
     # במקום לקפוץ לאפס באמצע הגלישה - כך הגלישה של הזמר נשמרת ונשמעת חלקה
     idx = np.arange(len(corr))
@@ -170,7 +323,7 @@ def _targets(mc, voiced, notes, scale, strength, edits=None):
                 same |= sel & gap
         corr = np.where(same, filled, corr)
     corr = np.where(voiced, corr, 0)
-    return gaussian_filter1d(corr, 3)            # מעברים רכים (~30ms)
+    return gaussian_filter1d(corr, GLIDE)
 
 
 def _onset_env(x, notes):
@@ -403,7 +556,7 @@ def _choose_chords(segments, notes, chords, tonic_index=0, w=None):
             if ov <= 0:
                 continue
             wt = ov * (1.5 if abs(nt.start - a) < 0.15 else 1.0)
-            pc = int(round(nt.pitch)) % 12
+            pc = tone(nt) % 12
             for k, ch in enumerate(chords):
                 if pc == ch["pcs"][0]:
                     em[t, k] += 1.0 * wt
@@ -436,7 +589,7 @@ def _choose_chords(segments, notes, chords, tonic_index=0, w=None):
     return [(a, b, chords[k]) for (a, b), k in zip(segments, path)]
 
 
-def analyze(x: np.ndarray, strength: float = 0.8, progress=None):
+def analyze(x: np.ndarray, strength: float = 1.0, progress=None):
     duration = len(x) / SR
     f0, conf = yin(x)
     if progress:
@@ -444,7 +597,7 @@ def analyze(x: np.ndarray, strength: float = 0.8, progress=None):
     voiced = f0 > 0
     if voiced.sum() < 50:
         from ..audio.fileio import AudioError
-        raise AudioError("לא זיהיתי שירה בהקלטה.\nשיר קרוב יותר למיקרופון ונסה שוב.")
+        raise AudioError(tx("לא זיהיתי שירה בהקלטה.\nשיר קרוב יותר למיקרופון ונסה שוב."))
     midi = np.where(voiced, hz_to_midi(np.where(voiced, f0, 1)), np.nan)
     # הערכת הכיוון לפי הגובה הממוצע על פני מחזור ויברטו (ויברטו רחב מבלבל את ההערכה)
     wv = max(3, int(round(0.17 / FRAME_SEC)))
@@ -458,12 +611,17 @@ def analyze(x: np.ndarray, strength: float = 0.8, progress=None):
     mc = np.where(voiced, midi - curve + glob, np.nan)   # כמו מכוון קבוע ב-glob
     mc0 = np.where(voiced, mc - glob, np.nan)            # ביחס לרשת חצאי הטונים
     notes = _segment_notes(np.nan_to_num(mc0), voiced)
-    w = np.zeros(12)
-    for nt in notes:
-        w[int(round(nt.pitch)) % 12] += min(nt.end - nt.start, 2.0)
     longs = [nt for nt in notes if nt.end - nt.start > 0.25] or notes
-    final_pc = int(round(longs[-1].pitch)) % 12 if longs else None
-    ranked = theory.rank_keys(w, final_pc)
+    if not notes:
+        from ..audio.fileio import AudioError
+        raise AudioError(tx("לא זיהיתי שירה בהקלטה.\nשיר קרוב יותר למיקרופון ונסה שוב."))
+    # הכיוון והסולם נקבעים יחד (עמיד גם בשירה מזויפת); כל הגבהים מוזזים לכיוון שנמצא
+    delta, w, ranked = joint_tuning_key(notes, longs[-1].pitch)
+    if abs(delta) > 1e-9:
+        glob += delta
+        mc0 = mc0 - delta
+        for nt in notes:
+            nt.pitch -= delta
     env = _onset_env(x, notes)
     tempo, beats, clarity = _tempo_beats(env)
     if progress:
@@ -511,6 +669,9 @@ def set_key(a, index):
     index = index % len(a.keys)
     a.key_index = index
     a.tonic, a.mode = a.keys[index][0], a.keys[index][1]
+    if a.consensus is None or len(a.consensus) != len(a.notes):
+        a.consensus = repeat_consensus(a.notes, a.midi_c)
+    melody_targets(a.notes, theory.scale_pcs(a.tonic, a.mode), a.consensus)
     a.correction = correction_for(a, a.strength)
     chords = theory.chords_for(a.tonic, a.mode)
     a.chords = _merge(_choose_chords(chord_segments(a), a.notes, chords))

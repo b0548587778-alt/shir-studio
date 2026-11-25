@@ -66,3 +66,10 @@ def fake_sd(monkeypatch):
     sd = FakeSD()
     monkeypatch.setattr(devices, "_sd", lambda: sd)
     return sd
+
+
+@pytest.fixture(autouse=True)
+def trial_in_tmp(tmp_path, monkeypatch):
+    """קובצי גרסת הניסיון נשמרים בתיקייה זמנית - שהבדיקות לא יספרו שירים במחשב האמיתי."""
+    from shir_studio import license as lic
+    monkeypatch.setattr(lic, "_paths", lambda: [str(tmp_path / "lic_a.json"), str(tmp_path / "lic_b.json")])

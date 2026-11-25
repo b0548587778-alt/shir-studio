@@ -1,5 +1,6 @@
 """בדיקה אם יש גרסה חדשה, והורדה והתקנה שלה מתוך התוכנה.
 הכול רץ רק כשהמשתמש לוחץ על הכפתור - התוכנה עצמה עובדת בלי אינטרנט."""
+from .i18n import tx
 import hashlib
 import os
 import json
@@ -81,7 +82,7 @@ def _open(url, timeout):
 def download(info, folder, progress=None, opener=None, timeout=30):
     """מוריד את קובץ ההתקנה ובודק שהוא שלם ומקורי (גודל וטביעת SHA-256 כפי שפורסמו). מחזיר את הנתיב."""
     if not info or not str(info.get("url", "")).startswith(TRUSTED) or not info.get("sha256"):
-        raise UpdateError("לא מצאתי קובץ התקנה לגרסה החדשה.")
+        raise UpdateError(tx("לא מצאתי קובץ התקנה לגרסה החדשה."))
     os.makedirs(folder, exist_ok=True)
     dst = os.path.join(folder, ASSET)
     tmp = dst + ".part"
@@ -102,10 +103,10 @@ def download(info, folder, progress=None, opener=None, timeout=30):
         raise
     except Exception:
         _remove(tmp)
-        raise UpdateError("ההורדה נקטעה.\nבדוק את החיבור לאינטרנט ונסה שוב.")
+        raise UpdateError(tx("ההורדה נקטעה.\nבדוק את החיבור לאינטרנט ונסה שוב."))
     if (size and done != size) or h.hexdigest() != info["sha256"]:
         _remove(tmp)
-        raise UpdateError("הקובץ שירד אינו תקין, ולכן לא הותקן.\nנסה שוב מאוחר יותר.")
+        raise UpdateError(tx("הקובץ שירד אינו תקין, ולכן לא הותקן.\nנסה שוב מאוחר יותר."))
     os.replace(tmp, dst)
     if progress:
         progress(100)

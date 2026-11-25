@@ -1,4 +1,6 @@
 """חלון המחרוזת: בוחרים שירים, מסדרים אותם, ומחברים לקובץ אחד."""
+from .i18n import tx
+from .i18n import direction
 import os
 
 from PySide6.QtCore import Qt, QStandardPaths
@@ -7,49 +9,49 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushB
 
 from .trimview import CSS
 
-FILTER = "קבצי שיר (*.mp3 *.wav *.flac *.ogg)"
+FILTER = tx("קבצי שיר (*.mp3 *.wav *.flac *.ogg)")
 
 
 class MedleyDialog(QDialog):
     def __init__(self, parent, style_name=""):
         super().__init__(parent)
-        self.setWindowTitle("מחרוזת - כמה שירים בקובץ אחד")
-        self.setLayoutDirection(Qt.RightToLeft)
+        self.setWindowTitle(tx("מחרוזת - כמה שירים בקובץ אחד"))
+        self.setLayoutDirection(direction())
         self.setStyleSheet(CSS)
         v = QVBoxLayout(self)
-        lab = QLabel("הוסף את השירים וסדר אותם לפי הסדר שבו יושמעו. בין שיר לשיר יהיה מעבר חלק.")
+        lab = QLabel(tx("הוסף את השירים וסדר אותם לפי הסדר שבו יושמעו. בין שיר לשיר יהיה מעבר חלק."))
         lab.setWordWrap(True)
         v.addWidget(lab)
         row = QHBoxLayout()
         self.list = QListWidget()
         row.addWidget(self.list, 1)
         col = QVBoxLayout()
-        for text, fn in (("➕  הוסף שירים", self.add_files), ("▲  למעלה", lambda: self.move(-1)),
-                         ("▼  למטה", lambda: self.move(1)), ("✖  הסר", self.remove)):
+        for text, fn in ((tx("➕  הוסף שירים"), self.add_files), (tx("▲  למעלה"), lambda: self.move(-1)),
+                         (tx("▼  למטה"), lambda: self.move(1)), (tx("✖  הסר"), self.remove)):
             b = QPushButton(text)
             b.clicked.connect(fn)
             col.addWidget(b)
         col.addStretch()
         row.addLayout(col)
         v.addLayout(row, 1)
-        self.process = QCheckBox(f"הקבצים הם שירה בלי ליווי - קודם להכין לכל אחד שיר מלא"
-                                 + (f" (סגנון: {style_name})" if style_name else ""))
+        self.process = QCheckBox(tx("הקבצים הם שירה בלי ליווי - קודם להכין לכל אחד שיר מלא")
+                                 + (tx(" (סגנון: {0})").format(style_name) if style_name else ""))
         v.addWidget(self.process)
         h = QHBoxLayout()
-        h.addWidget(QLabel("אורך המעבר בין שיר לשיר:"))
+        h.addWidget(QLabel(tx("אורך המעבר בין שיר לשיר:")))
         self.cross = QDoubleSpinBox()
         self.cross.setRange(0.0, 8.0)
         self.cross.setSingleStep(0.5)
         self.cross.setValue(2.0)
-        self.cross.setSuffix(" שניות")
+        self.cross.setSuffix(tx(" שניות"))
         h.addWidget(self.cross); h.addStretch()
         v.addLayout(h)
         h = QHBoxLayout()
-        self.ok = QPushButton("🎼  צור מחרוזת")
+        self.ok = QPushButton(tx("🎼  צור מחרוזת"))
         self.ok.setStyleSheet("background:#2c7a3f; color:white; font-weight:bold;")
         self.ok.setEnabled(False)
         self.ok.clicked.connect(self.accept)
-        cancel = QPushButton("ביטול")
+        cancel = QPushButton(tx("ביטול"))
         cancel.clicked.connect(self.reject)
         h.addWidget(self.ok, 2); h.addWidget(cancel, 1)
         v.addLayout(h)
@@ -64,7 +66,7 @@ class MedleyDialog(QDialog):
 
     def add_files(self):
         start = QStandardPaths.writableLocation(QStandardPaths.MusicLocation)
-        paths, _ = QFileDialog.getOpenFileNames(self, "בחר שירים למחרוזת", start, FILTER)
+        paths, _ = QFileDialog.getOpenFileNames(self, tx("בחר שירים למחרוזת"), start, FILTER)
         self.add_paths(paths)
 
     def move(self, d):

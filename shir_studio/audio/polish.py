@@ -1,4 +1,5 @@
 """ליטוש הקול: הסרת 'קליקים', ריכוך פיצוצי פ' ו-ב' מול המיקרופון, ואופי הקול (חם / בהיר / רדיו)."""
+from ..i18n import tx
 import numpy as np
 from scipy.signal import butter, sosfiltfilt
 from scipy.interpolate import CubicSpline
@@ -6,7 +7,7 @@ from scipy.ndimage import uniform_filter1d, maximum_filter1d
 
 from .fileio import SR
 
-TONES = {"natural": "טבעי", "warm": "חם ורך", "bright": "בהיר וצלול", "radio": "רדיו (חד וקרוב)"}
+TONES = {"natural": tx("טבעי"), "warm": tx("חם ורך"), "bright": tx("בהיר וצלול"), "radio": tx("רדיו (חד וקרוב)")}
 
 
 def declick(v, sensitivity=9.0):

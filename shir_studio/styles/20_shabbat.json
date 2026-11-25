@@ -1,0 +1,291 @@
+{
+ "name": "שירי שבת",
+ "description": "זמירות ליד השולחן: פסנתר חם, קונטרבס, גיטרה, מיתרים רכים וחליל",
+ "order": 19,
+ "reverb": 0.35,
+ "accomp_db": -5,
+ "rich_chords": true,
+ "arc": true,
+ "lead": "flute",
+ "tracks": [
+  {
+   "instrument": "piano",
+   "octave": 3,
+   "volume": 0.75,
+   "pan": -0.1,
+   "bar": [
+    {
+     "t": 0,
+     "n": "root_low",
+     "v": 0.55,
+     "d": 2
+    },
+    {
+     "t": 0.5,
+     "n": "fifth_low",
+     "v": 0.4,
+     "d": 1
+    },
+    {
+     "t": 1,
+     "n": "chord",
+     "v": 0.45,
+     "d": 1
+    },
+    {
+     "t": 2,
+     "n": "root",
+     "v": 0.5,
+     "d": 1
+    },
+    {
+     "t": 2.5,
+     "n": "fifth",
+     "v": 0.4,
+     "d": 1
+    },
+    {
+     "t": 3,
+     "n": "chord",
+     "v": 0.45,
+     "d": 1
+    }
+   ],
+   "alt": [
+    {
+     "t": 0,
+     "n": "root_low",
+     "v": 0.55,
+     "d": 2
+    },
+    {
+     "t": 1,
+     "n": "chord",
+     "v": 0.45,
+     "d": 1
+    },
+    {
+     "t": 1.5,
+     "n": "fifth",
+     "v": 0.4,
+     "d": 0.5
+    },
+    {
+     "t": 2,
+     "n": "third",
+     "v": 0.5,
+     "d": 1
+    },
+    {
+     "t": 3,
+     "n": "chord",
+     "v": 0.45,
+     "d": 0.9
+    },
+    {
+     "t": 3.5,
+     "n": "octave",
+     "v": 0.38,
+     "d": 0.5
+    }
+   ]
+  },
+  {
+   "instrument": "acoustic_bass",
+   "octave": 2,
+   "volume": 0.7,
+   "pan": 0.05,
+   "bar": [
+    {
+     "t": 0,
+     "n": "root",
+     "v": 0.75,
+     "d": 1.8
+    },
+    {
+     "t": 2,
+     "n": "fifth_low",
+     "v": 0.6,
+     "d": 1.6
+    }
+   ],
+   "alt": [
+    {
+     "t": 0,
+     "n": "root",
+     "v": 0.75,
+     "d": 1.8
+    },
+    {
+     "t": 2,
+     "n": "root",
+     "v": 0.6,
+     "d": 0.9
+    },
+    {
+     "t": 3,
+     "n": "fifth_low",
+     "v": 0.6,
+     "d": 0.9
+    }
+   ],
+   "from": 0.4
+  },
+  {
+   "instrument": "guitar",
+   "octave": 3,
+   "volume": 0.4,
+   "pan": 0.35,
+   "bar": [
+    {
+     "t": 0,
+     "n": "chord",
+     "v": 0.45,
+     "d": 1.8,
+     "strum": 0.02
+    },
+    {
+     "t": 2,
+     "n": "chord",
+     "v": 0.4,
+     "d": 0.9,
+     "strum": 0.02
+    },
+    {
+     "t": 3,
+     "n": "chord",
+     "v": 0.38,
+     "d": 0.9,
+     "strum": 0.02
+    }
+   ],
+   "from": 0.5
+  },
+  {
+   "instrument": "slow_strings",
+   "octave": 4,
+   "volume": 0.5,
+   "pan": -0.3,
+   "bar": [
+    {
+     "t": 0,
+     "n": "chord",
+     "v": 0.45,
+     "d": 4
+    }
+   ],
+   "from": 0.55
+  },
+  {
+   "instrument": "clarinet",
+   "octave": 4,
+   "volume": 0.24,
+   "pan": 0.2,
+   "bar": [
+    {
+     "t": 0,
+     "n": "third",
+     "v": 0.42,
+     "d": 3.8
+    }
+   ],
+   "alt": [
+    {
+     "t": 0,
+     "n": "fifth",
+     "v": 0.42,
+     "d": 3.8
+    }
+   ],
+   "from": 0.75
+  },
+  {
+   "instrument": "drums",
+   "volume": 0.22,
+   "bar": [
+    {
+     "t": 0,
+     "n": "kick",
+     "v": 0.45,
+     "d": 1
+    },
+    {
+     "t": 1,
+     "n": "hat",
+     "v": 0.3,
+     "d": 1
+    },
+    {
+     "t": 2,
+     "n": "kick",
+     "v": 0.35,
+     "d": 1
+    },
+    {
+     "t": 3,
+     "n": "hat",
+     "v": 0.3,
+     "d": 1
+    }
+   ],
+   "fill": [
+    {
+     "t": 3,
+     "n": "snare",
+     "v": 0.35
+    },
+    {
+     "t": 3.5,
+     "n": "snare",
+     "v": 0.45
+    }
+   ],
+   "from": 0.8
+  }
+ ],
+ "free": [
+  {
+   "instrument": "piano",
+   "octave": 3,
+   "volume": 0.75,
+   "pan": -0.1,
+   "seg": [
+    {
+     "t": 0,
+     "d": "seg",
+     "n": "chord",
+     "v": 0.5,
+     "strum": 0.05
+    }
+   ]
+  },
+  {
+   "instrument": "slow_strings",
+   "octave": 4,
+   "volume": 0.5,
+   "pan": -0.3,
+   "seg": [
+    {
+     "t": 0.1,
+     "d": "seg",
+     "n": "chord",
+     "v": 0.4
+    }
+   ]
+  },
+  {
+   "instrument": "acoustic_bass",
+   "octave": 2,
+   "volume": 0.6,
+   "pan": 0.05,
+   "seg": [
+    {
+     "t": 0,
+     "d": "seg",
+     "n": "root",
+     "v": 0.6
+    }
+   ]
+  }
+ ]
+}

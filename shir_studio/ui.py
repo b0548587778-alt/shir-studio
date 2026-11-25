@@ -1,4 +1,6 @@
 """החלון הראשי: מחבר בין המסכים (בתיקייה screens) לבין העבודה עצמה. הכול בעברית, מימין לשמאל."""
+from .i18n import tx
+from .i18n import direction
 import dataclasses
 import os
 import time
@@ -7,7 +9,7 @@ import traceback
 import numpy as np
 from PySide6.QtCore import Qt, QTimer, QStandardPaths, QUrl
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import QMainWindow, QStackedWidget, QFileDialog
+from PySide6.QtWidgets import QMainWindow, QStackedWidget, QFileDialog, QWidget, QVBoxLayout
 
 from . import APP_NAME, APP_VERSION, prefs as prefs_mod, recovery, update, shortcuts
 from .audio import edit
@@ -22,7 +24,8 @@ from .pitchview import PitchDialog
 from .trimview import TrimDialog, PunchDialog
 from .medleyview import MedleyDialog
 from .screens import common
-from .screens.common import STYLE, Worker, fmt_time
+from .screens.common import STYLE, Worker, fmt_time, StepBar
+from . import license as lic
 from .screens.home import HomeScreen
 from .screens.record import RecordScreen, TITLE as REC_TITLE, TOO_LOUD, NOT_HEARD
 from .screens.styles import StyleScreen
@@ -30,7 +33,7 @@ from .screens.work import WorkScreen
 from .screens.done import DoneScreen
 
 AUDIO_EXT = (".mp3", ".wav", ".flac", ".ogg", ".m4a")
-AUDIO_FILTER = "קבצי שיר (*.mp3 *.wav *.flac *.ogg *.m4a)"
+AUDIO_FILTER = tx("קבצי שיר (*.mp3 *.wav *.flac *.ogg *.m4a)")
 PRE_ROLL = 3.0            # שניות של ספירה לאחור / השמעה מקדימה לפני הקלטה
 KEEP_RAWS = 6             # כמה גרסאות של ההקלטה נשמרות לביטול/חזרה
 
@@ -39,7 +42,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(APP_NAME)
-        self.setLayoutDirection(Qt.RightToLeft)
+        self.setLayoutDirection(direction())
         self.setStyleSheet(STYLE)
         self.resize(1000, 760)
         self.setAcceptDrops(True)
@@ -76,9 +79,17 @@ class MainWindow(QMainWindow):
         self.work = WorkScreen()
         self.done = DoneScreen()
         self.stack = QStackedWidget()
-        self.setCentralWidget(self.stack)
+        self.steps = StepBar()                        # שלושת הצעדים: הקלטה, סגנון, שיר מוכן
+        box = QWidget()
+        lay = QVBoxLayout(box)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+        lay.addWidget(self.steps)
+        lay.addWidget(self.stack, 1)
+        self.setCentralWidget(box)
         for w in (self.home, self.rec, self.style_page, self.work, self.done):
             self.stack.addWidget(w)
+        self.stack.currentChanged.connect(self._show_step)
         self._connect()
         shortcuts.install(self)
         for i, st in enumerate(self.styles):
@@ -92,6 +103,18 @@ class MainWindow(QMainWindow):
         self.play_timer.timeout.connect(self._update_pos)
         self.play_timer.start(200)
         QTimer.singleShot(400, self.offer_recovery)
+        self.home.license.connect(self.enter_license)
+        self.home.language.connect(self.choose_language)
+        self._refresh_license()
+
+    def _show_step(self, _index=None):
+        w = self.stack.currentWidget()
+        if w is self.done:
+            self.steps.set_step(2)
+        elif w is self.style_page or (w is self.work and self.song is not None):
+            self.steps.set_step(1)
+        elif w is not self.work:
+            self.steps.set_step(0)
 
     def _connect(self):
         h, r, s, d = self.home, self.rec, self.style_page, self.done
@@ -140,10 +163,10 @@ class MainWindow(QMainWindow):
     def error(self, text):
         common.warn(self, text)
 
-    def _info(self, title, text, button="אישור"):
+    def _info(self, title, text, button=tx("אישור")):
         common.info(self, title, text, button)
 
-    def _ask(self, title, text, yes="כן", no="לא"):
+    def _ask(self, title, text, yes=tx("כן"), no=tx("לא")):
         return common.ask(self, title, text, yes, no)
 
     def style(self):
@@ -151,7 +174,7 @@ class MainWindow(QMainWindow):
 
     @staticmethod
     def _docs(*parts):
-        return os.path.join(QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation), "שיר סטודיו", *parts)
+        return os.path.join(QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation), tx("שיר סטודיו"), *parts)
 
     # ---------- מעבר בין מסכים ----------
     def go_home(self):
@@ -166,7 +189,7 @@ class MainWindow(QMainWindow):
 
     def choose_style(self):
         if self.backing is not None and self.result is not None:
-            self._info("סגנון ליווי", "בשיר הזה הליווי הוא הפלייבק שבחרת, ולכן אין סגנון להחליף.")
+            self._info(tx("סגנון ליווי"), tx("בשיר הזה הליווי הוא הפלייבק שבחרת, ולכן אין סגנון להחליף."))
             return
         self.stop_playing()
         self.stack.setCurrentWidget(self.style_page)
@@ -189,7 +212,7 @@ class MainWindow(QMainWindow):
             self.error(str(e))
             return
         self.backup = recovery.RecordingBackup()
-        self._begin_recording("new", REC_TITLE, "מתכוננים...", PRE_ROLL, 15 * 60)
+        self._begin_recording("new", REC_TITLE, tx("מתכוננים..."), PRE_ROLL, 15 * 60)
 
     def _begin_recording(self, mode, title, wait_title, countdown, limit, pre=0.0):
         """ספירה לאחור (3-2-1, כדי שתחילת השיר לא תיחתך) ואז מסך ההקלטה."""
@@ -275,20 +298,20 @@ class MainWindow(QMainWindow):
             data = data[int(self.rec_pre * SR):]
         if len(data) < SR * 2:
             self._end_backup()
-            self.error("ההקלטה קצרה מדי.\nלחץ 'הקלט שיר' ושיר לפחות כמה שניות.")
+            self.error(tx("ההקלטה קצרה מדי.\nלחץ 'הקלט שיר' ושיר לפחות כמה שניות."))
             self.cancel_recording()
             return
         if np.max(np.abs(data)) < 0.003:
             self._end_backup()
-            self.error("לא שמעתי קול בהקלטה.\nבדוק שהמיקרופון מחובר ודבר קרוב אליו.")
+            self.error(tx("לא שמעתי קול בהקלטה.\nבדוק שהמיקרופון מחובר ודבר קרוב אליו."))
             self.cancel_recording()
             return
         self._keep_recording(data)
         self._end_backup()
         if mode == "new" and clipped_share(data) > 0.002 and not self._ask(
-                "ההקלטה חזקה מדי", "בחלק מההקלטה הקול היה חזק מדי ונחתך, ולכן הוא עלול להישמע צרוד.\n"
-                "מומלץ להקליט שוב, קצת יותר רחוק מהמיקרופון.\n(ההקלטה הזו נשמרה בתיקיית 'הקלטות'.)",
-                "המשך עם ההקלטה הזו", "הקלט שוב"):
+                tx("ההקלטה חזקה מדי"), tx("בחלק מההקלטה הקול היה חזק מדי ונחתך, ולכן הוא עלול להישמע צרוד.\n"
+                "מומלץ להקליט שוב, קצת יותר רחוק מהמיקרופון.\n(ההקלטה הזו נשמרה בתיקיית 'הקלטות'.)"),
+                tx("המשך עם ההקלטה הזו"), tx("הקלט שוב")):
             self.start_recording()
             return
         if mode == "overdub":
@@ -305,16 +328,16 @@ class MainWindow(QMainWindow):
     def _keep_recording(self, data):
         """שומר עותק של ההקלטה המקורית בתיקייה 'מסמכים\\שיר סטודיו\\הקלטות'."""
         try:
-            d = self._docs("הקלטות")
+            d = self._docs(tx("הקלטות"))
             os.makedirs(d, exist_ok=True)
-            save(os.path.join(d, time.strftime("הקלטה %Y-%m-%d %H-%M-%S.mp3")), data)
+            save(os.path.join(d, time.strftime(tx("הקלטה %Y-%m-%d %H-%M-%S.mp3"))), data)
         except Exception:
             log_error(traceback.format_exc())
 
     # ---------- פתיחת קבצים (כפתור או גרירה) ----------
     def choose_file(self):
         start = QStandardPaths.writableLocation(QStandardPaths.MusicLocation)
-        path, _ = QFileDialog.getOpenFileName(self, "בחר שיר", start, AUDIO_FILTER + ";;כל הקבצים (*.*)")
+        path, _ = QFileDialog.getOpenFileName(self, tx("בחר שיר"), start, AUDIO_FILTER + tx(";;כל הקבצים (*.*)"))
         if path:
             self.open_audio(path)
 
@@ -345,7 +368,7 @@ class MainWindow(QMainWindow):
         elif audio:
             self.batch_process(audio)
         elif paths:
-            self.error("זה לא קובץ שיר.\nאפשר לגרור קובץ שנגמר ב-mp3 או wav, או פרויקט של שיר סטודיו.")
+            self.error(tx("זה לא קובץ שיר.\nאפשר לגרור קובץ שנגמר ב-mp3 או wav, או פרויקט של שיר סטודיו."))
 
     # ---------- ההקלטה שעובדים עליה ----------
     def _set_raw(self, data, grid=None):
@@ -390,7 +413,7 @@ class MainWindow(QMainWindow):
         if self.original is None:
             return
         if self.backing is not None:
-            self.error("אי אפשר לחתוך שיר שהוקלט על פלייבק - השירה צריכה להישאר במקומה מול הנגינה.")
+            self.error(tx("אי אפשר לחתוך שיר שהוקלט על פלייבק - השירה צריכה להישאר במקומה מול הנגינה."))
             return
         self.stop_playing()
         dlg = TrimDialog(self, self.original, play=self._play, stop=self.stop_playing)
@@ -443,7 +466,7 @@ class MainWindow(QMainWindow):
                 self.recorder.stop()
                 self.error(str(e))
                 return
-        self._begin_recording("punch", "שיר עכשיו את המשפט", "הקשב... ואז שיר", PRE_ROLL, hi - lo + 1.5, pre)
+        self._begin_recording("punch", tx("שיר עכשיו את המשפט"), tx("הקשב... ואז שיר"), PRE_ROLL, hi - lo + 1.5, pre)
 
     def _finish_punch(self, take):
         lo, hi = self.punch_slot
@@ -467,32 +490,32 @@ class MainWindow(QMainWindow):
         if self.song is None or self.result is None:
             return
         if best:
-            ok = self._ask("שיר שוב - ובחר את המיטב",
-                           "תשמע את הליווי המוכן ותשיר איתו את כל השיר שוב.\n"
+            ok = self._ask(tx("שיר שוב - ובחר את המיטב"),
+                           tx("תשמע את הליווי המוכן ותשיר איתו את כל השיר שוב.\n"
                            "אחר כך התוכנה תשווה משפט אחרי משפט, ותיקח מכל הקלטה את המשפטים שיצאו נקיים יותר.\n"
                            "אפשר לחזור על זה כמה פעמים - בכל פעם נשמר הטוב ביותר.\n\n"
-                           "חשוב: שים אוזניות, כדי שהליווי לא ייכנס למיקרופון.",
-                           "יש לי אוזניות - מתחילים", "ביטול")
+                           "חשוב: שים אוזניות, כדי שהליווי לא ייכנס למיקרופון."),
+                           tx("יש לי אוזניות - מתחילים"), tx("ביטול"))
         else:
-            ok = self._ask("שיר שוב עם הליווי",
-                           "תשמע את הליווי המוכן ותשיר איתו את כל השיר מחדש.\n"
+            ok = self._ask(tx("שיר שוב עם הליווי"),
+                           tx("תשמע את הליווי המוכן ותשיר איתו את כל השיר מחדש.\n"
                            "השירה יוצאת מדויקת יותר בקצב, והשיר נשמע נקי יותר.\n\n"
-                           "חשוב: שים אוזניות, כדי שהליווי לא ייכנס למיקרופון.",
-                           "יש לי אוזניות - מתחילים", "ביטול")
+                           "חשוב: שים אוזניות, כדי שהליווי לא ייכנס למיקרופון."),
+                           tx("יש לי אוזניות - מתחילים"), tx("ביטול"))
         if not ok:
             return
         self._best_take = bool(best)
         self.stop_playing()
-        self.work.begin("מכין את הליווי...")
+        self.work.begin(tx("מכין את הליווי..."))
         self.stack.setCurrentWidget(self.work)
         song = self.song
         self._run(lambda p: song.stems_in_sung_key(p), self._start_overdub, back=self._back_to_song)
 
     def _start_overdub(self, stems):
-        acc = stems.get("ליווי")
+        acc = stems.get(tx("ליווי"))
         self.song.last_stems = None                       # מפנים זיכרון
         if acc is None:
-            self.error("לא הצלחתי להכין את הליווי.")
+            self.error(tx("לא הצלחתי להכין את הליווי."))
             self._back_to_song()
             return
         self.overdub_lead = float(self.song.last_lead)
@@ -504,13 +527,13 @@ class MainWindow(QMainWindow):
             self.error(str(e))
             self._back_to_song()
             return
-        self._begin_recording("overdub", "שיר עם הליווי", "מתכוננים...", PRE_ROLL, len(acc) / SR, PRE_ROLL)
+        self._begin_recording("overdub", tx("שיר עם הליווי"), tx("מתכוננים..."), PRE_ROLL, len(acc) / SR, PRE_ROLL)
 
     def _finish_overdub(self, rec):
         """rec מתחיל בתחילת הליווי. הקול בשיר מתחיל 'lead' שניות אחר כך - כמו בהקלטה המקורית."""
         voice = rec[int(self.overdub_lead * SR):]
         if len(voice) < 2 * SR or np.max(np.abs(voice)) < 0.003:
-            self.error("לא שמעתי שירה בהקלטה.\nנסה שוב.")
+            self.error(tx("לא שמעתי שירה בהקלטה.\nנסה שוב."))
             self._back_to_song()
             return
         if self._best_take:
@@ -529,10 +552,10 @@ class MainWindow(QMainWindow):
         old, a = self.original, self.song.analysis
         scale = theory.scale_pcs(a.tonic, a.mode) if a is not None else None
         f0 = a.f0 if a is not None else None
-        self.work.begin("משווה בין ההקלטות...")
+        self.work.begin(tx("משווה בין ההקלטות..."))
         self.stack.setCurrentWidget(self.work)
         self._run(lambda p: takes.best_of(old, take, scale, f0, p), self._best_chosen, back=self._back_to_song,
-                  fail_text="לא הצלחתי לשלב בין ההקלטות.\nהשיר נשאר כמו שהיה.")
+                  fail_text=tx("לא הצלחתי לשלב בין ההקלטות.\nהשיר נשאר כמו שהיה."))
 
     def _best_chosen(self, res):
         from .audio import takes
@@ -540,10 +563,9 @@ class MainWindow(QMainWindow):
         new, kept = takes.summary(picks)
         if new == 0:
             self._back_to_song()
-            self._info("בחירת המיטב", "בכל המשפטים ההקלטה הקודמת יצאה נקייה יותר (או שווה),\nולכן השיר נשאר כמו שהיה.")
+            self._info(tx("בחירת המיטב"), tx("בכל המשפטים ההקלטה הקודמת יצאה נקייה יותר (או שווה),\nולכן השיר נשאר כמו שהיה."))
             return
-        self._info("בחירת המיטב", f"מההקלטה החדשה נלקחו {new} משפטים, ומהקודמת נשארו {kept}.\n"
-                   "לא מרוצה? 'ביטול שינוי' מחזיר את ההקלטה הקודמת.")
+        self._info(tx("בחירת המיטב"), tx("מההקלטה החדשה נלקחו {0} משפטים, ומהקודמת נשארו {1}.\nלא מרוצה? 'ביטול שינוי' מחזיר את ההקלטה הקודמת.").format(new, kept))
         grid = self._grid()
         self._pin_key()
         self._set_raw(mixed, grid)
@@ -570,7 +592,7 @@ class MainWindow(QMainWindow):
     def _load_lyrics(self, text):
         """המילים של השיר שנפתח עכשיו (שיר חדש = בלי מילים)."""
         self.lyrics = text
-        self.done.b_lyrics.setText("📝  מילים ✔" if text else "📝  מילים")
+        self.done.b_lyrics.setText(tx("📝  מילים ✔") if text else tx("📝  מילים"))
 
     def set_lyrics(self, text):
         if text == self.lyrics:
@@ -619,7 +641,7 @@ class MainWindow(QMainWindow):
             if r == 3:                                   # 'שמור כטעם שלי' - ברירת המחדל לכל שיר חדש
                 self.prefs = prefs_mod.store_personal(self.prefs, self.settings, self.style()["id"],
                                                       self.save_fmt, self.save_extras)
-                self._info("נשמר", "ההגדרות נשמרו כטעם שלך.\nמעכשיו כל שיר חדש יתחיל איתן.")
+                self._info(tx("נשמר"), tx("ההגדרות נשמרו כטעם שלך.\nמעכשיו כל שיר חדש יתחיל איתן."))
         elif r == 2:
             self.settings, self.save_extras, self.save_fmt = Settings(), False, "mp3"
         else:
@@ -634,11 +656,11 @@ class MainWindow(QMainWindow):
         if a is None:
             return
         if not a.steady:
-            self.error("השיר מושר בקצב חופשי, ואין בו קצב קבוע לשנות.")
+            self.error(tx("השיר מושר בקצב חופשי, ואין בו קצב קבוע לשנות."))
             return
         st = self.settings
         if not 50 <= a.tempo * factor <= 230:
-            self.error("הליווי כבר מהיר מאוד." if factor > 1 else "הליווי כבר איטי מאוד.")
+            self.error(tx("הליווי כבר מהיר מאוד.") if factor > 1 else tx("הליווי כבר איטי מאוד."))
             return
         if st.tempo_mode == "manual" and st.bpm:
             self.settings = dataclasses.replace(st, bpm=st.bpm * factor)
@@ -671,7 +693,7 @@ class MainWindow(QMainWindow):
                 apply_settings(song.analysis, settings)
                 set_key(song.analysis, pending)
             if change_key:
-                p(5, "מחפש התאמה אחרת...")
+                p(5, tx("מחפש התאמה אחרת..."))
                 song.next_key()
             out = song.make(st, p, settings)
             # גיבוי אוטומטי של העבודה - אם המחשב נכבה לפני ששמרו, אפשר לשחזר
@@ -688,16 +710,16 @@ class MainWindow(QMainWindow):
             self.history.push(self._state())
         self._update_undo()
         self.work.bar.setValue(100)
-        hint = f"סגנון: {st['name']}"
+        hint = tx("סגנון: {0}").format(st['name'])
         info = self.song.info()
         if self.backing is not None:
-            hint = "ליווי: הפלייבק שבחרת"
+            hint = tx("ליווי: הפלייבק שבחרת")
         elif not info["steady"]:
-            hint += "\nהשיר מושר בקצב חופשי, לכן הליווי רך ובלי תופים."
+            hint += tx("\nהשיר מושר בקצב חופשי, לכן הליווי רך ובלי תופים.")
         elif getattr(self.song.analysis, "auto_waltz", False):
-            hint += "\nהשיר זוהה כוואלס (3/4). לא מתאים? אפשר לשנות את המשקל ב'מתקדם'."
+            hint += tx("\nהשיר זוהה כוואלס (3/4). לא מתאים? אפשר לשנות את המשקל ב'מתקדם'.")
         elif self.settings.modulate and self.song.analysis.modulate_at is None:
-            hint += "\nהשיר קצר מדי לעליית סולם."
+            hint += tx("\nהשיר קצר מדי לעליית סולם.")
         self.done.hint.setText(hint)
         self.stack.setCurrentWidget(self.done)
 
@@ -733,7 +755,7 @@ class MainWindow(QMainWindow):
         rid = state.get("raw", self.raw_id)
         if rid != self.raw_id:                           # השינוי היה בהקלטה עצמה (חיתוך, משפט חדש)
             if not (0 <= rid < len(self.raws)) or self.raws[rid] is None:
-                self.error("אי אפשר לחזור כל כך הרבה צעדים אחורה.")
+                self.error(tx("אי אפשר לחזור כל כך הרבה צעדים אחורה."))
                 return
             data, grid = self.raws[rid]
             self.raw_id, self.original, self._orig_play = rid, data, None
@@ -813,7 +835,7 @@ class MainWindow(QMainWindow):
         if p is None:
             self.playing = None
         total = self.player.length() or (len(self.result) / SR if self.result is not None else 0)
-        what = {"result": "השיר המוכן", "original": "ההקלטה המקורית"}.get(self.playing, "")
+        what = {"result": tx("השיר המוכן"), "original": tx("ההקלטה המקורית")}.get(self.playing, "")
         self.done.show_position(p, total, what)
 
     def _seek(self, frac):
@@ -825,21 +847,23 @@ class MainWindow(QMainWindow):
     # ---------- שמירה ----------
     def share_file(self):
         """קובץ קטן לשליחה בוואטסאפ או במייל (MP3 128, בערך 1MB לדקה)."""
-        if self.result is None:
+        if self.result is None or not self._may_save():
             return
-        d = self._docs("לשליחה")
+        d = self._docs(tx("לשליחה"))
         try:
             os.makedirs(d, exist_ok=True)
-            path = os.path.join(d, time.strftime("השיר שלי %Y-%m-%d %H-%M.mp3"))
+            path = os.path.join(d, time.strftime(tx("השיר שלי %Y-%m-%d %H-%M.mp3")))
             save(path, self.result, bitrate=128, tags=self._tags(path))
         except Exception:
             log_error(traceback.format_exc())
-            self.error("לא הצלחתי ליצור את הקובץ לשליחה.")
+            self.error(tx("לא הצלחתי ליצור את הקובץ לשליחה."))
             return
         mb = os.path.getsize(path) / 1024 / 1024
+        if not getattr(self, "_counted", None) is self.song:
+            self._counted = self.song
+            self._count_saved()
         self._reveal(path)
-        self._info("קובץ לשליחה", f"נוצר קובץ קטן ({mb:.1f}MB) שמתאים לוואטסאפ ולמייל:\n\n{path}\n\n"
-                   "בוואטסאפ: לחצו על 📎 ← מסמך, ובחרו את הקובץ.")
+        self._info(tx("קובץ לשליחה"), tx("נוצר קובץ קטן ({0:.1f}MB) שמתאים לוואטסאפ ולמייל:\n\n{1}\n\nבוואטסאפ: לחצו על 📎 ← מסמך, ובחרו את הקובץ.").format(mb, path))
 
     def _tags(self, path):
         """פרטי השיר שנכתבים בתוך הקובץ: שם השיר (שם הקובץ) ושם הזמר."""
@@ -860,8 +884,8 @@ class MainWindow(QMainWindow):
         """דף אקורדים להדפסה (PDF)."""
         if not (self.song and self.song.analysis is not None):
             return
-        start = os.path.join(QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation), "השיר שלי - אקורדים.pdf")
-        path, _ = QFileDialog.getSaveFileName(self, "שמור דף אקורדים", start, "קובץ PDF (*.pdf)")
+        start = os.path.join(QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation), tx("השיר שלי - אקורדים.pdf"))
+        path, _ = QFileDialog.getSaveFileName(self, tx("שמור דף אקורדים"), start, tx("קובץ PDF (*.pdf)"))
         if not path:
             return
         if not path.lower().endswith(".pdf"):
@@ -872,16 +896,16 @@ class MainWindow(QMainWindow):
             chordsheet.write_pdf(path, chordsheet.sheet_data(self.song, title, self.lyrics))
         except Exception:
             log_error(traceback.format_exc())
-            self.error("לא הצלחתי לשמור את דף האקורדים.\nבחר מקום אחר ונסה שוב.")
+            self.error(tx("לא הצלחתי לשמור את דף האקורדים.\nבחר מקום אחר ונסה שוב."))
             return
         self._reveal(path)
-        self._info("נשמר", f"דף האקורדים נשמר:\n{path}\n\nאפשר לפתוח אותו ולהדפיס.")
+        self._info(tx("נשמר"), tx("דף האקורדים נשמר:\n{0}\n\nאפשר לפתוח אותו ולהדפיס.").format(path))
 
     def save_project(self):
         if self.original is None:
             return
-        start = os.path.join(QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation), f"השיר שלי{EXT}")
-        path, _ = QFileDialog.getSaveFileName(self, "שמור פרויקט", start, f"פרויקט שיר סטודיו (*{EXT})")
+        start = os.path.join(QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation), tx("השיר שלי{0}").format(EXT))
+        path, _ = QFileDialog.getSaveFileName(self, tx("שמור פרויקט"), start, tx("פרויקט שיר סטודיו (*{0})").format(EXT))
         if not path:
             return
         if not path.lower().endswith(EXT):
@@ -891,22 +915,22 @@ class MainWindow(QMainWindow):
                          {"key_index": self.song.analysis.key_index if self.song.analysis else 0, "lyrics": self.lyrics})
         except Exception:
             log_error(traceback.format_exc())
-            self.error("לא הצלחתי לשמור את הפרויקט.\nבדוק שיש מקום בדיסק ונסה שוב.")
+            self.error(tx("לא הצלחתי לשמור את הפרויקט.\nבדוק שיש מקום בדיסק ונסה שוב."))
             return
         self.dirty = False
-        self._info("נשמר", f"הפרויקט נשמר:\n{path}\n\nאפשר לפתוח אותו בהמשך ממסך הפתיחה.")
+        self._info(tx("נשמר"), tx("הפרויקט נשמר:\n{0}\n\nאפשר לפתוח אותו בהמשך ממסך הפתיחה.").format(path))
 
     def open_project(self, path=None):
         if not path:
             start = QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation)
-            path, _ = QFileDialog.getOpenFileName(self, "פתח פרויקט", start, f"פרויקט שיר סטודיו (*{EXT})")
+            path, _ = QFileDialog.getOpenFileName(self, tx("פתח פרויקט"), start, tx("פרויקט שיר סטודיו (*{0})").format(EXT))
         if not path:
             return
         try:
             raw, settings, style_id, meta = load_project(path)
         except Exception:
             log_error(traceback.format_exc())
-            self.error("לא הצלחתי לפתוח את הפרויקט.\nייתכן שהקובץ פגום.")
+            self.error(tx("לא הצלחתי לפתוח את הפרויקט.\nייתכן שהקובץ פגום."))
             return
         self._open_loaded(raw, settings, style_id, meta)
 
@@ -925,11 +949,43 @@ class MainWindow(QMainWindow):
         self._pending_key = meta.get("key_index", 0)
         self.make_song()
 
+    # ---------- גרסת ניסיון ורישיון ----------
+    def _refresh_license(self):
+        self.home.show_license(lic.status())
+
+    def _may_save(self):
+        """מותר לשמור? בגרסת ניסיון שנגמרה - מסבירים ומציעים להזין קוד."""
+        if lic.can_save():
+            return True
+        if self._ask(tx("גרסת הניסיון הסתיימה"),
+                     tx("שמרת כבר {0} שירים בגרסת הניסיון.\nכדי להמשיך לשמור שירים צריך קוד רישיון.\n\nיש לך קוד?").format(lic.TRIAL_SONGS), tx("כן, להזין קוד"), tx("לא עכשיו")):
+            self.enter_license()
+        return lic.can_save()
+
+    def _count_saved(self, n=1):
+        lic.count_song(n)
+        self._refresh_license()
+
+    def choose_language(self):
+        from .langview import LanguageDialog
+        from . import i18n
+        dlg = LanguageDialog(self, i18n.language())
+        if dlg.exec() and dlg.code != i18n.language():
+            i18n.save_language(dlg.code)
+            self._info(tx("שפה"), tx("השפה תתחלף בפעם הבאה שתפתח את התוכנה.\nסגור את התוכנה ופתח אותה מחדש."))
+
+    def enter_license(self):
+        from .licenseview import LicenseDialog
+        LicenseDialog(self).exec()
+        self._refresh_license()
+
     def save_result(self):
+        if not self._may_save():
+            return
         ext = self.save_fmt
-        start = os.path.join(QStandardPaths.writableLocation(QStandardPaths.MusicLocation), f"השיר שלי.{ext}")
-        flt = {"mp3": "קובץ MP3 (*.mp3)", "flac": "קובץ FLAC (*.flac)"}.get(ext, "קובץ WAV (*.wav)")
-        path, _ = QFileDialog.getSaveFileName(self, "שמור את השיר", start, flt)
+        start = os.path.join(QStandardPaths.writableLocation(QStandardPaths.MusicLocation), tx("השיר שלי.{0}").format(ext))
+        flt = {"mp3": tx("קובץ MP3 (*.mp3)"), "flac": tx("קובץ FLAC (*.flac)")}.get(ext, tx("קובץ WAV (*.wav)"))
+        path, _ = QFileDialog.getSaveFileName(self, tx("שמור את השיר"), start, flt)
         if not path:
             return
         if not path.lower().endswith("." + ext):
@@ -945,24 +1001,29 @@ class MainWindow(QMainWindow):
             self.error(str(e))
             return
         self.dirty = False
-        msg = f"השיר נשמר בהצלחה!\n\n{path}"
+        if not getattr(self, "_counted", None) is self.song:      # כל שיר נספר פעם אחת, גם אם נשמר שוב
+            self._counted = self.song
+            self._count_saved()
+        msg = tx("השיר נשמר בהצלחה!\n\n{0}").format(path)
         if extra:
-            msg += "\n\nנשמרו גם:\n" + "\n".join(os.path.basename(p) for p in extra)
-        self._info("נשמר", msg, "מעולה")
+            msg += tx("\n\nנשמרו גם:\n") + "\n".join(os.path.basename(p) for p in extra)
+        self._info(tx("נשמר"), msg, tx("מעולה"))
 
     # ---------- כמה שירים ברצף, ומחרוזת ----------
     def batch_process(self, paths=None):
+        if not self._may_save():
+            return
         if not paths:
             start = QStandardPaths.writableLocation(QStandardPaths.MusicLocation)
-            paths, _ = QFileDialog.getOpenFileNames(self, "בחר כמה שירים", start, AUDIO_FILTER)
+            paths, _ = QFileDialog.getOpenFileNames(self, tx("בחר כמה שירים"), start, AUDIO_FILTER)
         if not paths:
             return
-        folder = QFileDialog.getExistingDirectory(self, "לאן לשמור את השירים המוכנים?", os.path.dirname(paths[0]))
+        folder = QFileDialog.getExistingDirectory(self, tx("לאן לשמור את השירים המוכנים?"), os.path.dirname(paths[0]))
         if not folder:
             return
         st = self.style()
         settings, fmt = self.settings, self.save_fmt
-        self.work.begin("מעבד את השירים...")
+        self.work.begin(tx("מעבד את השירים..."))
         self.stack.setCurrentWidget(self.work)
         self._run(lambda p: batch(paths, st, settings, folder, fmt, progress=p,
                                           artist=self.prefs.get("artist", "")), self._batch_done)
@@ -970,24 +1031,28 @@ class MainWindow(QMainWindow):
     def _batch_done(self, results):
         ok = [r for r in results if r[1]]
         bad = [r for r in results if not r[1]]
-        msg = f"הוכנו {len(ok)} שירים (סגנון: {self.style()['name']})."
         if ok:
-            msg += f"\nנשמרו בתיקייה:\n{os.path.dirname(ok[0][1])}"
+            self._count_saved(len(ok))
+        msg = tx("הוכנו {0} שירים (סגנון: {1}).").format(len(ok), self.style()['name'])
+        if ok:
+            msg += tx("\nנשמרו בתיקייה:\n{0}").format(os.path.dirname(ok[0][1]))
         if bad:
-            msg += "\n\nלא הצלחתי להכין:\n" + "\n".join(os.path.basename(r[0]) for r in bad)
+            msg += tx("\n\nלא הצלחתי להכין:\n") + "\n".join(os.path.basename(r[0]) for r in bad)
         self.go_home()
-        self._info("סיום", msg)
+        self._info(tx("סיום"), msg)
 
     def medley(self):
+        if not self._may_save():
+            return
         st = self.style()
         dlg = MedleyDialog(self, st["name"])
         if not dlg.exec() or len(dlg.paths()) < 2:
             return
         ext = self.save_fmt
-        start = os.path.join(QStandardPaths.writableLocation(QStandardPaths.MusicLocation), f"מחרוזת.{ext}")
-        path, _ = QFileDialog.getSaveFileName(self, "שמור את המחרוזת", start,
-                                              {"mp3": "קובץ MP3 (*.mp3)", "flac": "קובץ FLAC (*.flac)"}
-                                              .get(ext, "קובץ WAV (*.wav)"))
+        start = os.path.join(QStandardPaths.writableLocation(QStandardPaths.MusicLocation), tx("מחרוזת.{0}").format(ext))
+        path, _ = QFileDialog.getSaveFileName(self, tx("שמור את המחרוזת"), start,
+                                              {"mp3": tx("קובץ MP3 (*.mp3)"), "flac": tx("קובץ FLAC (*.flac)")}
+                                              .get(ext, tx("קובץ WAV (*.wav)")))
         if not path:
             return
         if not path.lower().endswith("." + ext):
@@ -997,19 +1062,20 @@ class MainWindow(QMainWindow):
     def make_medley(self, paths, path, process, crossfade):
         from .medley import make_medley
         st, settings = self.style(), self.settings
-        self.work.begin("מכין את המחרוזת...")
+        self.work.begin(tx("מכין את המחרוזת..."))
         self.stack.setCurrentWidget(self.work)
 
         def done(res):
             seconds, bad = res
-            msg = f"המחרוזת מוכנה ({fmt_time(seconds)} דקות):\n\n{path}"
+            msg = tx("המחרוזת מוכנה ({0} דקות):\n\n{1}").format(fmt_time(seconds), path)
             if bad:
-                msg += "\n\nלא הצלחתי לפתוח:\n" + "\n".join(os.path.basename(p) for p in bad)
+                msg += tx("\n\nלא הצלחתי לפתוח:\n") + "\n".join(os.path.basename(p) for p in bad)
             self.go_home()
+            self._count_saved()
             self._reveal(path)
-            self._info("מחרוזת", msg, "מעולה")
+            self._info(tx("מחרוזת"), msg, tx("מעולה"))
         self._run(lambda p: make_medley(paths, path, st, settings, process, crossfade, p), done,
-                  fail_text="לא הצלחתי להכין את המחרוזת.\nנסה שוב.")
+                  fail_text=tx("לא הצלחתי להכין את המחרוזת.\nנסה שוב."))
 
     # ---------- גרסה חדשה ----------
     # ---------- הפרדת קול משיר מוכן ----------
@@ -1029,7 +1095,7 @@ class MainWindow(QMainWindow):
 
     def _pick_audio(self, title, many=False):
         start = QStandardPaths.writableLocation(QStandardPaths.MusicLocation)
-        flt = AUDIO_FILTER + ";;כל הקבצים (*.*)"
+        flt = AUDIO_FILTER + tx(";;כל הקבצים (*.*)")
         if many:
             return QFileDialog.getOpenFileNames(self, title, start, flt)[0]
         return QFileDialog.getOpenFileName(self, title, start, flt)[0]
@@ -1041,11 +1107,11 @@ class MainWindow(QMainWindow):
         from .audio.fileio import load_stereo
         ok = sep.stems_available() if mode == "stems" else sep.available()
         if not ok:
-            self.error("הפרדת הקול לא זמינה בהתקנה הזו.\nהתקן מחדש את התוכנה מקובץ ההתקנה העדכני.")
+            self.error(tx("הפרדת הקול לא זמינה בהתקנה הזו.\nהתקן מחדש את התוכנה מקובץ ההתקנה העדכני."))
             return
         paths = [path] if isinstance(path, str) else list(path or [])
         if not paths:
-            paths = self._pick_audio("בחר שיר מוכן להפרדה (אפשר כמה)", many=True)
+            paths = self._pick_audio(tx("בחר שיר מוכן להפרדה (אפשר כמה)"), many=True)
         if not paths:
             return
         try:
@@ -1053,9 +1119,9 @@ class MainWindow(QMainWindow):
         except AudioError as e:
             self.error(str(e))
             return
-        self.work.begin("מפריד את השירה מהנגינה...\n(כמה דקות לכל שיר - תלוי במחשב)")
+        self.work.begin(tx("מפריד את השירה מהנגינה...\n(כמה דקות לכל שיר - תלוי במחשב)"))
         self.stack.setCurrentWidget(self.work)
-        folder, fmt, artist = self._docs("הפרדת קול"), self.save_fmt, self.prefs.get("artist", "")
+        folder, fmt, artist = self._docs(tx("הפרדת קול")), self.save_fmt, self.prefs.get("artist", "")
         limit = SR * 60 * 15
 
         def job(p):
@@ -1065,36 +1131,36 @@ class MainWindow(QMainWindow):
                 name = os.path.basename(src)
                 rep_ = lambda pct, m=None, i=i: p(2 + (i * 100 + pct) * 0.96 / len(paths), None)
                 if len(paths) > 1:
-                    p(2 + i * 96 / len(paths), f"שיר {i + 1} מתוך {len(paths)}: {name}")
+                    p(2 + i * 96 / len(paths), tx("שיר {0} מתוך {1}: {2}").format(i + 1, len(paths), name))
                 try:
                     mix = first if i == 0 else load_stereo(src)
                     if len(mix) > limit:
-                        raise AudioError("הקובץ ארוך מדי (עד 15 דקות).")
+                        raise AudioError(tx("הקובץ ארוך מדי (עד 15 דקות)."))
                     if mode == "stems":
                         parts = sep.separate_stems(mix, progress=rep_)
                     else:
                         v, m = sep.separate(mix, progress=rep_)
-                        parts = {"שירה": v, "נגינה": m}
+                        parts = {tx("שירה"): v, tx("נגינה"): m}
                     base = os.path.splitext(name)[0]
                     for part, data in parts.items():
                         dst = os.path.join(folder, f"{base} - {part}.{fmt}")
                         save(dst, data, tags={"title": f"{base} - {part}", "artist": artist})
                         saved.append(dst)
                     if i == 0:
-                        voice = parts["שירה"]
+                        voice = parts[tx("שירה")]
                 except AudioError as e:
                     failed.append((name, str(e).splitlines()[0]))
                 except MemoryError:
                     raise
                 except Exception:
                     log_error(traceback.format_exc())
-                    failed.append((name, "ההפרדה לא הצליחה"))
+                    failed.append((name, tx("ההפרדה לא הצליחה")))
             if not saved:
-                raise AudioError("ההפרדה לא הצליחה.\n" + "\n".join(f"{n}: {why}" for n, why in failed))
+                raise AudioError(tx("ההפרדה לא הצליחה.\n") + "\n".join(f"{n}: {why}" for n, why in failed))
             p(100, None)
             return voice, saved, failed
         self._run(job, lambda res: self._separated(res, mode, len(paths)), back=self.go_home,
-                  fail_text="ההפרדה לא הצליחה.\nנסה קובץ אחר.")
+                  fail_text=tx("ההפרדה לא הצליחה.\nנסה קובץ אחר."))
 
     def _separated(self, res, mode="two", count=1):
         voice, paths, failed = res
@@ -1103,7 +1169,7 @@ class MainWindow(QMainWindow):
         has_voice = mono is not None and np.max(np.abs(mono)) >= 1e-3
         if mode == "vocal" and count == 1:
             if not has_voice:
-                self.error("לא מצאתי שירה בשיר הזה.")
+                self.error(tx("לא מצאתי שירה בשיר הזה."))
                 return
             # גרסה ווקאלית: ממשיכים ישר עם השירה לסגנון 'ווקאלי - בלי כלים'
             self.process(mono)
@@ -1114,15 +1180,15 @@ class MainWindow(QMainWindow):
             self.make_song()
             return
         self._reveal(paths[0])
-        text = f"נשמרו {len(paths)} קבצים בתיקייה:\n{os.path.dirname(paths[0])}"
+        text = tx("נשמרו {0} קבצים בתיקייה:\n{1}").format(len(paths), os.path.dirname(paths[0]))
         if count == 1:
-            text = "נשמרו הקבצים:\n\n" + "\n".join(paths)
+            text = tx("נשמרו הקבצים:\n\n") + "\n".join(paths)
         if failed:
-            text += "\n\nלא הצליחו:\n" + "\n".join(f"{n} - {why}" for n, why in failed)
+            text += tx("\n\nלא הצליחו:\n") + "\n".join(f"{n} - {why}" for n, why in failed)
         if count > 1 or not has_voice:
-            self._info("ההפרדה מוכנה", text)
-        elif self._ask("ההפרדה מוכנה", text + "\n\nלהמשיך עם השירה, ולהוסיף לה ליווי חדש?",
-                       "כן, ליווי חדש", "לא, זה מספיק"):
+            self._info(tx("ההפרדה מוכנה"), text)
+        elif self._ask(tx("ההפרדה מוכנה"), text + tx("\n\nלהמשיך עם השירה, ולהוסיף לה ליווי חדש?"),
+                       tx("כן, ליווי חדש"), tx("לא, זה מספיק")):
             self.process(mono)
 
     # ---------- פלייבק: סולם וקצב, ושירה על פלייבק ----------
@@ -1131,9 +1197,9 @@ class MainWindow(QMainWindow):
         from .audio import stretch
         from .audio.fileio import load_stereo
         if semitones == 0 and tempo == 100:
-            self._info("פלייבק", "לא נבחר שינוי.\nבחר בכמה חצאי טונים להעלות או להוריד, או קצב אחר.")
+            self._info(tx("פלייבק"), tx("לא נבחר שינוי.\nבחר בכמה חצאי טונים להעלות או להוריד, או קצב אחר."))
             return
-        path = path or self._pick_audio("בחר קובץ נגינה (פלייבק)")
+        path = path or self._pick_audio(tx("בחר קובץ נגינה (פלייבק)"))
         if not path:
             return
         try:
@@ -1141,15 +1207,16 @@ class MainWindow(QMainWindow):
         except AudioError as e:
             self.error(str(e))
             return
-        self.work.begin("משנה את הסולם והקצב של הפלייבק...")
+        self.work.begin(tx("משנה את הסולם והקצב של הפלייבק..."))
         self.stack.setCurrentWidget(self.work)
         base = os.path.splitext(os.path.basename(path))[0]
         note = []
         if semitones:
-            note.append(f"{abs(semitones)} חצאי טונים {'למעלה' if semitones > 0 else 'למטה'}")
+            note.append(tx("{0} חצאי טונים למעלה").format(abs(semitones)) if semitones > 0
+                        else tx("{0} חצאי טונים למטה").format(abs(semitones)))
         if tempo != 100:
-            note.append(f"קצב {tempo}%")
-        folder, fmt = self._docs("פלייבק"), self.save_fmt
+            note.append(tx("קצב {0}%").format(tempo))
+        folder, fmt = self._docs(tx("פלייבק")), self.save_fmt
         dst = os.path.join(folder, f"{base} ({', '.join(note)}).{fmt}")
 
         def job(p):
@@ -1158,17 +1225,17 @@ class MainWindow(QMainWindow):
             save(dst, out, tags={"title": os.path.splitext(os.path.basename(dst))[0]})
             p(100, None)
             return dst
-        self._run(job, self._shifted, back=self.go_home, fail_text="השינוי לא הצליח.\nנסה קובץ אחר.")
+        self._run(job, self._shifted, back=self.go_home, fail_text=tx("השינוי לא הצליח.\nנסה קובץ אחר."))
 
     def _shifted(self, dst):
         self.stack.setCurrentWidget(self.home)
         self._reveal(dst)
-        self._info("הפלייבק מוכן", f"הפלייבק נשמר בסולם ובקצב החדשים:\n\n{dst}")
+        self._info(tx("הפלייבק מוכן"), tx("הפלייבק נשמר בסולם ובקצב החדשים:\n\n{0}").format(dst))
 
     def sing_on_playback(self, path=None):
         """בוחרים קובץ נגינה, שרים עליו עם אוזניות, והתוכנה מעבדת את הקול ומערבבת אותו עם הפלייבק."""
         from .audio.fileio import load_stereo
-        path = path or self._pick_audio("בחר קובץ נגינה (פלייבק) לשיר עליו")
+        path = path or self._pick_audio(tx("בחר קובץ נגינה (פלייבק) לשיר עליו"))
         if not path:
             return
         try:
@@ -1177,11 +1244,11 @@ class MainWindow(QMainWindow):
             self.error(str(e))
             return
         if len(backing) > SR * 60 * 15:
-            self.error("הקובץ ארוך מדי.\nאפשר לשיר על פלייבק של עד 15 דקות.")
+            self.error(tx("הקובץ ארוך מדי.\nאפשר לשיר על פלייבק של עד 15 דקות."))
             return
-        if not self._ask("שירה על פלייבק", "תשמע את הפלייבק ותשיר עליו.\n\n"
+        if not self._ask(tx("שירה על פלייבק"), tx("תשמע את הפלייבק ותשיר עליו.\n\n"
                          "חשוב: שים אוזניות, כדי שהנגינה לא תיכנס למיקרופון.\n"
-                         "כשסיימת לשיר - לחץ 'סיום'.", "יש לי אוזניות - מתחילים", "ביטול"):
+                         "כשסיימת לשיר - לחץ 'סיום'."), tx("יש לי אוזניות - מתחילים"), tx("ביטול")):
             return
         self.stop_playing()
         self._playback = backing
@@ -1191,11 +1258,11 @@ class MainWindow(QMainWindow):
         except AudioError as e:
             self.error(str(e))
             return
-        self._begin_recording("playback", "שיר עם הפלייבק", "מתכוננים...", PRE_ROLL, len(backing) / SR, PRE_ROLL)
+        self._begin_recording("playback", tx("שיר עם הפלייבק"), tx("מתכוננים..."), PRE_ROLL, len(backing) / SR, PRE_ROLL)
 
     def check_update(self):
         self.home.b_update.setEnabled(False)
-        self.home.b_update.setText("בודק...")
+        self.home.b_update.setText(tx("בודק..."))
         self.upd_worker = self._keep(Worker(lambda p: update.latest_version()))
         self.upd_worker.finished_ok.connect(self._update_result)
         self.upd_worker.failed.connect(lambda m: self._update_result(None))
@@ -1203,34 +1270,32 @@ class MainWindow(QMainWindow):
 
     def _update_result(self, latest):
         self.home.b_update.setEnabled(True)
-        self.home.b_update.setText("בדוק אם יש גרסה חדשה (דרך האינטרנט)")
+        self.home.b_update.setText(tx("בדוק אם יש גרסה חדשה (דרך האינטרנט)"))
         if latest is None:
-            self._info("בדיקת גרסה", "לא הצלחתי לבדוק.\nייתכן שאין חיבור לאינטרנט במחשב הזה.")
+            self._info(tx("בדיקת גרסה"), tx("לא הצלחתי לבדוק.\nייתכן שאין חיבור לאינטרנט במחשב הזה."))
         elif update.newer(latest, APP_VERSION):
             if not update.can_install():
-                if self._ask("יש גרסה חדשה", f"יש גרסה חדשה: {latest}\n(אצלך מותקנת גרסה {APP_VERSION})\n\n"
-                             "לפתוח את דף ההורדה?", "פתח את דף ההורדה", "לא עכשיו"):
+                if self._ask(tx("יש גרסה חדשה"), tx("יש גרסה חדשה: {0}\n(אצלך מותקנת גרסה {1})\n\nלפתוח את דף ההורדה?").format(latest, APP_VERSION), tx("פתח את דף ההורדה"), tx("לא עכשיו")):
                     QDesktopServices.openUrl(QUrl(update.PAGE))
-            elif self._ask("יש גרסה חדשה", f"יש גרסה חדשה: {latest}\n(אצלך מותקנת גרסה {APP_VERSION})\n\n"
-                           "להוריד ולהתקין אותה עכשיו?\nהתוכנה תיסגר, תתעדכן ותיפתח מחדש.",
-                           "עדכן עכשיו", "לא עכשיו"):
+            elif self._ask(tx("יש גרסה חדשה"), tx("יש גרסה חדשה: {0}\n(אצלך מותקנת גרסה {1})\n\nלהוריד ולהתקין אותה עכשיו?\nהתוכנה תיסגר, תתעדכן ותיפתח מחדש.").format(latest, APP_VERSION),
+                           tx("עדכן עכשיו"), tx("לא עכשיו")):
                 self.install_update()
         else:
-            self._info("בדיקת גרסה", f"הגרסה שלך ({APP_VERSION}) היא העדכנית ביותר.")
+            self._info(tx("בדיקת גרסה"), tx("הגרסה שלך ({0}) היא העדכנית ביותר.").format(APP_VERSION))
 
     def install_update(self):
         """מוריד את הגרסה החדשה, בודק שהקובץ מקורי, מתקין וסוגר את התוכנה."""
         self.stop_playing()
-        self.work.begin("מוריד את הגרסה החדשה...")
+        self.work.begin(tx("מוריד את הגרסה החדשה..."))
         self.stack.setCurrentWidget(self.work)
         folder = os.path.join(log_dir(), "update")
 
         def job(p):
             info = update.release_info()
             if info is None:
-                raise update.UpdateError("לא מצאתי קובץ התקנה לגרסה החדשה.")
+                raise update.UpdateError(tx("לא מצאתי קובץ התקנה לגרסה החדשה."))
             return update.download(info, folder, progress=lambda pct: p(pct, None))
-        self.upd_worker = self._keep(Worker(job, "העדכון לא הצליח.\nאפשר להוריד את הגרסה החדשה מדף ההורדה."))
+        self.upd_worker = self._keep(Worker(job, tx("העדכון לא הצליח.\nאפשר להוריד את הגרסה החדשה מדף ההורדה.")))
         self.upd_worker.progress.connect(self.work.set_progress)
         self.upd_worker.finished_ok.connect(self._run_installer)
         self.upd_worker.failed.connect(self._update_failed)
@@ -1238,7 +1303,7 @@ class MainWindow(QMainWindow):
 
     def _update_failed(self, message):
         self.go_home()
-        if self._ask("העדכון לא הצליח", f"{message}\n\nלפתוח את דף ההורדה?", "פתח את דף ההורדה", "לא עכשיו"):
+        if self._ask(tx("העדכון לא הצליח"), tx("{0}\n\nלפתוח את דף ההורדה?").format(message), tx("פתח את דף ההורדה"), tx("לא עכשיו")):
             QDesktopServices.openUrl(QUrl(update.PAGE))
 
     def _run_installer(self, path):
@@ -1246,7 +1311,7 @@ class MainWindow(QMainWindow):
             update.install(path)
         except Exception:
             log_error(traceback.format_exc())
-            self._update_failed("לא הצלחתי להפעיל את קובץ ההתקנה.")
+            self._update_failed(tx("לא הצלחתי להפעיל את קובץ ההתקנה."))
             return
         self.close()                       # שיר שלא נשמר נשאר בגיבוי האוטומטי ויוצע לשחזור אחרי העדכון
 
@@ -1258,16 +1323,15 @@ class MainWindow(QMainWindow):
             return
         if found[0] == "recording":
             data = found[1]
-            if self._ask("נמצאה הקלטה", f"נמצאה הקלטה ({fmt_time(len(data) / SR)} דקות) שהתוכנה נסגרה באמצע שלה.\n"
-                         "לשחזר אותה ולהמשיך?", "שחזר", "לא צריך"):
+            if self._ask(tx("נמצאה הקלטה"), tx("נמצאה הקלטה ({0} דקות) שהתוכנה נסגרה באמצע שלה.\nלשחזר אותה ולהמשיך?").format(fmt_time(len(data) / SR)), tx("שחזר"), tx("לא צריך")):
                 self._keep_recording(data)
                 recovery.clear()
                 self.process(data)
                 return
         else:
             _, raw, meta = found
-            if self._ask("נמצא שיר שלא נשמר", "בפעם הקודמת התוכנה נסגרה לפני שהשיר נשמר.\nלפתוח אותו שוב?",
-                         "פתח את השיר", "לא צריך"):
+            if self._ask(tx("נמצא שיר שלא נשמר"), tx("בפעם הקודמת התוכנה נסגרה לפני שהשיר נשמר.\nלפתוח אותו שוב?"),
+                         tx("פתח את השיר"), tx("לא צריך")):
                 self._open_loaded(raw, settings_from_dict(meta.get("settings")), meta.get("style"), meta)
                 return
         recovery.clear()

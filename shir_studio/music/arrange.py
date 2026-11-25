@@ -1,9 +1,11 @@
 """בניית הליווי לפי ניתוח השיר וסגנון שנבחר."""
+from ..i18n import tx
 import numpy as np
 
 from ..audio.fileio import SR
 from . import synth
 from .theory import chords_for, scale_pcs
+from .analysis import tone
 
 BASS = {"bass", "acoustic_bass"}
 LEAD_PREF = ("violin", "clarinet", "flute", "trumpet", "accordion", "guitar", "piano")
@@ -11,10 +13,10 @@ BRASS = {"brass", "trumpet", "horn"}                # כלי נשיפה ממתכ
 STRUMMED = {"piano", "guitar", "steel_guitar", "harp"}      # כלים שאקורד הסיום שלהם 'נפרט' מלמטה למעלה
 PHRASE = 8            # תיבות במשפט
 MOD_UP = 1            # עליית סולם בפזמון האחרון: חצי טון
-INTROS = {"start": "מתחילת השיר (4 תיבות)", "chorus": "מהפזמון (4 התיבות האחרונות שלו)",
-          "long": "ארוך - כל המשפט הראשון (8 תיבות)", "short": "קצר - שתי תיבות, בלי מנגינה"}
-ENDINGS = {"full": "סולו, האטה ואקורד סיום ארוך", "hits": "שלוש מכות חדות (חגיגי, לריקוד)",
-           "fade": "דעיכה - הליווי הולך ונחלש", "short": "קצר - אקורד סיום מיד אחרי השירה"}
+INTROS = {"start": tx("מתחילת השיר (4 תיבות)"), "chorus": tx("מהפזמון (4 התיבות האחרונות שלו)"),
+          "long": tx("ארוך - כל המשפט הראשון (8 תיבות)"), "short": tx("קצר - שתי תיבות, בלי מנגינה")}
+ENDINGS = {"full": tx("סולו, האטה ואקורד סיום ארוך"), "hits": tx("שלוש מכות חדות (חגיגי, לריקוד)"),
+           "fade": tx("דעיכה - הליווי הולך ונחלש"), "short": tx("קצר - אקורד סיום מיד אחרי השירה")}
 FLOURISH = {"piano", "harp"}     # כלים ש'מטפסים' על אקורד הסיום אחרי שהוא נפרט
 
 
@@ -87,6 +89,46 @@ def sections(a, tl, last_voice):
     if manual:
         levels = [int(manual[i]) if i < len(manual) else levels[i] for i in range(n)]
     return levels
+
+
+def arc(levels):
+    """ההתפתחות של העיבוד לאורך השיר: עוצמה 0..1 לכל משפט. השיר מתחיל שקט, כל משפט מוסיף מעט,
+    פזמון מלא יותר מבית, המשפט שלפני האחרון 'נושם' (כדי שהשיא יבלוט), והמשפט האחרון הוא השיא."""
+    n = len(levels)
+    if n == 1:
+        return [0.75]
+    out = []
+    for p, lv in enumerate(levels):
+        x = 0.3 + 0.45 * p / (n - 1) + (0.2 if lv else 0.0)
+        out.append(float(np.clip(x, 0.0, 0.95)))
+    out[0] = min(out[0], 0.35)
+    if n >= 4 and not levels[-2]:
+        out[-2] = min(out[-2], 0.5)
+    out[-1] = 1.0
+    return out
+
+
+def doubled_melody(a, tl, inten, sing0, bar_sec, frm, shift):
+    """תזמור של שיא: הכינורות מנגנים את המנגינה יחד עם הזמר (כמו בתזמורת אמיתית), רק במשפטים החזקים.
+    מחזיר [(התחלה, אורך, midi)] בזמן השירה. תווים קצרצרים (קישוטים) מדלגים, ותווים סמוכים זהים מתאחדים."""
+    out = []
+    for nt in a.notes:
+        d = nt.end - nt.start
+        if d < 0.14:
+            continue
+        p = int(max(0.0, nt.start - sing0 + 0.05) // (PHRASE * bar_sec))
+        if p >= len(inten) or inten[p] < frm:
+            continue
+        m = tone(nt) + shift
+        while m > 88:
+            m -= 12
+        while m < 55:
+            m += 12
+        if out and out[-1][2] == m and nt.start - (out[-1][0] + out[-1][1]) < 0.12:
+            out[-1] = (out[-1][0], nt.end - out[-1][0], m)
+        else:
+            out.append((nt.start, d, m))
+    return out
 
 
 def phrase_times(a, tl, last_voice):
@@ -168,7 +210,7 @@ def intro_melody(a, tl, bars, src_pos=None):
     first = min(nt.start for nt in a.notes)
     if src_pos is not None:
         a0, a1 = tl.beat_time(src_pos) - tl.lead, tl.beat_time(src_pos + bars * tl.meter) - tl.lead
-        notes = snap_melody(a, [(nt.start, nt.end, nt.pitch) for nt in a.notes
+        notes = snap_melody(a, [(nt.start, nt.end, tone(nt)) for nt in a.notes
                                 if a0 - 0.05 <= nt.start < a1 - 0.05 and nt.end - nt.start > 0.08])
         if not notes:
             return []
@@ -177,7 +219,7 @@ def intro_melody(a, tl, bars, src_pos=None):
         back = lambda t: tl.beat_time(tl.pos_of(t) - delta) - tl.lead
         stop = first - 0.12
         return [(back(st), min(back(en), stop), m + sh) for st, en, m in notes if back(st) < stop - 0.1]
-    notes = [(nt.start, nt.end, nt.pitch) for nt in a.notes
+    notes = [(nt.start, nt.end, tone(nt)) for nt in a.notes
              if s0 - 0.05 <= nt.start < s0 + bars * bar_sec and nt.end - nt.start > 0.08]
     notes = snap_melody(a, notes)
     if not notes:
@@ -250,7 +292,7 @@ def free_plan(a, style, tonic_chord):
     סיום - הכלי 'עונה' לזמר במשפט האחרון, ואחריו אקורד סיום ארוך.
     מחזיר dict: lead (שניות לפני השירה), segs (אקורדים), notes (צלילי הכלי המוביל), final (זמן, אורך)."""
     chords = list(a.chords) or [(0.0, a.duration, tonic_chord)]
-    mel = snap_melody(a, [(nt.start, nt.end, nt.pitch) for nt in a.notes if nt.end - nt.start > 0.08])
+    mel = snap_melody(a, [(nt.start, nt.end, tone(nt)) for nt in a.notes if nt.end - nt.start > 0.08])
     plan = {"lead": 1.5, "notes": [], "final": None}
     segs = list(chords)
     last_voice = max([e for _, e, _ in mel] + [chords[-1][1]])
@@ -374,7 +416,7 @@ def outro_melody(a, tl, last_voice, bars=4):
     out = []
     for nt in a.notes:
         if nt.start >= start - 0.05 and nt.end - nt.start > 0.08:
-            m = int(round(nt.pitch))
+            m = tone(nt)
             if m % 12 not in scale:                  # צליל שזויף - מצמידים לסולם
                 m = min((m + d for d in (-1, 1)), key=lambda q: (q % 12 not in scale, abs(q - nt.pitch)))
             out.append((nt.start, nt.end, m))
@@ -487,6 +529,14 @@ def render(a, style, progress=None, rng_seed=7):
     tun = a.tuning
     specs = style["tracks"] if a.steady else style.get("free", style["tracks"])
     levels = sections(a, tl, last_voice) if a.steady else [1]
+    inten = arc(levels)                              # התפתחות העיבוד (לסגנונות שמשתמשים ב-"from" / "arc")
+    use_arc = bool(style.get("arc"))
+
+    def inten_at(phrase_bar, bar=0):
+        if phrase_bar < 0:
+            return 0.3 + 0.15 * bar / max(1, IB - 1)          # הפתיח: רך, מתמלא מעט
+        p = phrase_bar // PHRASE
+        return inten[p] if p < len(inten) else 1.0
     bar_sec = tl.period * meter if a.steady else 1.0
     # סולו בסוף: המשפט האחרון של המנגינה מנוגן בכלי, ורק אחריו אקורד הסיום
     solo, solo_from = (outro_melody(a, tl, last_voice)
@@ -582,7 +632,10 @@ def render(a, style, progress=None, rng_seed=7):
         prev_voicing = None
         layer = tr.get("enter", 0) >= 8          # כלי 'שכבה' - מנגן רק בפזמונים
         if a.steady:
-            bar_events = to_compound(tr["bar"]) if compound else [ev for ev in tr["bar"] if ev["t"] < meter]
+            shape = lambda evs_: to_compound(evs_) if compound else [ev for ev in evs_ if ev["t"] < meter]
+            bar_events = shape(tr["bar"])
+            alt_events = shape(tr["alt"]) if tr.get("alt") else None       # תיבה שנייה שונה - לא לולאה
+            high_events = shape(tr["high"]) if tr.get("high") else None    # מה מנגנים במשפטים החזקים
             fill_events = to_compound(tr["fill"]) if (compound and tr.get("fill")) else tr.get("fill")
             nb = len(tl.beats)
             bar = 0
@@ -649,7 +702,19 @@ def render(a, style, progress=None, rng_seed=7):
                 if layer and lvl == 0 and not in_outro:
                     bar += 1
                     continue
+                cur_int = inten_at(phrase_bar, bar)
+                if tr.get("from") is not None and not in_outro and cur_int < tr["from"]:
+                    bar += 1                                   # הכלי הזה מצטרף רק כשהעיבוד מתפתח
+                    continue
+                if tr.get("until") is not None and not in_outro and bar >= IB and cur_int >= tr["until"]:
+                    bar += 1                                   # כלי של הקטעים השקטים - מפנה מקום בשיא
+                    continue
                 evs = bar_events
+                if high_events is not None and (cur_int >= tr.get("high_from", 0.75) or in_outro):
+                    evs = high_events
+                elif alt_events is not None and bar % 2 == 1:
+                    evs = alt_events
+                cur_events = evs
                 end_of_phrase = bar == IB - 1 or (bar >= IB and phrase_bar % PHRASE == PHRASE - 1)
                 next_lvl = level_at(phrase_bar + 1)
                 if inst == "drums" and end_of_phrase and tr.get("fill"):
@@ -673,7 +738,7 @@ def render(a, style, progress=None, rng_seed=7):
                                     {"t": meter - 1 + 1 / sub, "n": "tom_hi", "v": 0.7},
                                     {"t": meter - 1 + (2 / 3 if compound else 0.75), "n": "tom_low", "v": 0.8}]
                             f0 = meter - 1
-                    evs = [e for e in bar_events if e["t"] < f0] + [e for e in fill if e["t"] < meter]
+                    evs = [e for e in cur_events if e["t"] < f0] + [e for e in fill if e["t"] < meter]
                 new_phrase = bar >= IB and phrase_bar % PHRASE == 0
                 if inst == "drums" and new_phrase and (tr.get("crash_on_phrase") or lvl > level_at(phrase_bar - 1)):
                     t = tl.beat_time(pos0)
@@ -696,6 +761,9 @@ def render(a, style, progress=None, rng_seed=7):
                            {"t": meter - 0.5, "n": "run1", "v": 0.78, "d": 0.45}]
                 lift = (0.7 + 0.22 * bar / max(1, IB - 1)) if bar < IB else \
                     (0.86 if lvl == 0 else (1.07 if last_phrase else 1.0))
+                if use_arc and bar >= IB:
+                    # קרשנדו לאורך השיר, וגם בתוך כל משפט: מתגבר מעט לקראת סופו
+                    lift = 0.68 + 0.42 * cur_int + 0.05 * ((phrase_bar % PHRASE) / (PHRASE - 1))
                 if inst == "drums" and INTRO_MEL and bar == IB - INTRO_MEL and bar > 0:
                     cv = 0.45                                  # מצילה רכה כשהמנגינה של הפתיח מתחילה
                     out.add(synth.render_drum("crash", cv), tl.beat_time(pos0), ("crash", 0.3, cv))
@@ -748,7 +816,7 @@ def render(a, style, progress=None, rng_seed=7):
                             prev_voicing = notes
                             if lvl == 1 and (phrase_bar // PHRASE) % 2 == 1 and inst not in BASS:
                                 notes = notes + [notes[0] + 12]          # פזמון חוזר: אקורד פתוח ומלא יותר
-                        elif inst in BASS and ev is bar_events[-1] and ev["t"] >= meter - 1 and len(notes) == 1:
+                        elif inst in BASS and ev is cur_events[-1] and ev["t"] >= meter - 1 and len(notes) == 1:
                             # 'הליכה' של הבס: צליל מעבר אל השורש של האקורד הבא
                             nxt = chord_at(tv + tl.period * (meter - ev["t"]) + 0.05)
                             if nxt["root"] != ch["root"] and rng.random() < 0.7:
@@ -831,6 +899,17 @@ def render(a, style, progress=None, rng_seed=7):
             for t0, d, m, v in cm:
                 play(out, lead, m, d, v, t0 + tl.lead + rng.normal(0, 0.006))
             spec = {"instrument": lead, "volume": 0.42, "pan": -0.2, "counter": True}
+            tracks.append((spec, out.buf, out.events))
+    dbl = style.get("double")
+    if a.steady and dbl and a.notes:
+        mel = doubled_melody(a, tl, inten, sing0, bar_sec, dbl.get("from", 0.8), int(dbl.get("shift", 0)))
+        if mel:
+            out = _Track(n)
+            for t0, d, m in mel:
+                play(out, dbl.get("instrument", "strings"), m, max(0.15, d * 1.02), float(dbl.get("v", 0.5)),
+                     t0 + tl.lead + 0.01)
+            spec = {"instrument": dbl.get("instrument", "strings"), "volume": float(dbl.get("volume", 0.4)),
+                    "pan": float(dbl.get("pan", -0.3)), "double": True}
             tracks.append((spec, out.buf, out.events))
     if a.steady and ending == "fade" and outro_bars:
         # דעיכה: מחצי תיבה אחרי סוף השירה ועד סוף הסולו כל הכלים הולכים ונחלשים, בלי אקורד סיום

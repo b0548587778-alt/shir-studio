@@ -174,7 +174,7 @@ def test_lyrics_stay_with_the_song(qapp, win, clean_voice, monkeypatch):
     assert w.lyrics == LYRICS and "✔" in w.done.b_lyrics.text()
     # ביטול שינוי לא מוחק את המילים
     w.done.other_style.emit()
-    w.style_page.set_current(2)
+    w.style_page.set_current(3)
     w.style_page.make.emit()
     wait(qapp, lambda: w.stack.currentWidget() is w.done)
     w.done.undo.emit()
