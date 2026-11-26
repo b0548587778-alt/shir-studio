@@ -24,7 +24,7 @@ from .pitchview import PitchDialog
 from .trimview import TrimDialog, PunchDialog
 from .medleyview import MedleyDialog
 from .screens import common
-from .screens.common import STYLE, Worker, fmt_time, StepBar
+from .screens.common import STYLE, Worker, fmt_time, StepBar, scroll_box, screen_room
 from . import license as lic
 from .screens.home import HomeScreen
 from .screens.record import RecordScreen, TITLE as REC_TITLE, TOO_LOUD, NOT_HEARD
@@ -44,7 +44,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(APP_NAME)
         self.setLayoutDirection(direction())
         self.setStyleSheet(STYLE)
-        self.resize(1000, 760)
+        room = screen_room()
+        self.resize(min(1000, room.width()), min(760, room.height()))
         self.setAcceptDrops(True)
         self.recorder = None
         self.backup = None
@@ -85,7 +86,7 @@ class MainWindow(QMainWindow):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
         lay.addWidget(self.steps)
-        lay.addWidget(self.stack, 1)
+        lay.addWidget(scroll_box(self.stack), 1)      # במסך קטן - פס גלילה, ושום כפתור לא נחתך
         self.setCentralWidget(box)
         for w in (self.home, self.rec, self.style_page, self.work, self.done):
             self.stack.addWidget(w)

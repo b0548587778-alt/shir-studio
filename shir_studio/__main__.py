@@ -62,6 +62,9 @@ def main():
         import shir_studio
         shir_studio.APP_NAME = i18n.tx(tx("שיר סטודיו"))
     app.setLayoutDirection(direction())
+    from .screens.common import FitDialogs
+    app._fit_dialogs = FitDialogs(app)          # חלון שגדול מהמסך מקבל פס גלילה
+    app.installEventFilter(app._fit_dialogs)
 
     def hook(t, v, tb):
         log_error("".join(traceback.format_exception(t, v, tb)))

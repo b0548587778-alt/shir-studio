@@ -152,3 +152,37 @@ def test_trial_blocks_saving_when_used_up(qapp, appdata, fake_sd, tmp_path, monk
     finally:
         w.dirty = False
         w.close()
+
+
+def test_small_screen_gets_scroll_bars(qapp, appdata, fake_sd):
+    """מחשב נייד קטן: המסכים והחלונות לא נחתכים - מופיע פס גלילה."""
+    from PySide6.QtCore import QSize
+    from PySide6.QtWidgets import QScrollArea, QPushButton
+    from shir_studio.ui import MainWindow
+    from shir_studio.screens.common import fit_dialog
+    from shir_studio.licenseview import LicenseDialog
+    from shir_studio.advanced import AdvancedDialog
+    w = MainWindow()
+    try:
+        area = w.stack.parent().parent()
+        assert isinstance(area, QScrollArea) and area.widget() is w.stack
+        w.show()
+        w.resize(700, 420)                                # קטן בהרבה ממה שהמסכים צריכים
+        qapp.processEvents()
+        assert w.stack.height() > area.viewport().height()            # יש לאן לגלול
+        assert area.verticalScrollBar().maximum() > 0
+        for page in (w.home, w.done, w.rec, w.style_page):
+            w.stack.setCurrentWidget(page)
+            qapp.processEvents()
+            assert w.stack.currentWidget() is page
+        d = LicenseDialog(w)
+        small = QSize(500, 320)
+        assert fit_dialog(d, small) and d.width() <= 500 and d.height() <= 320
+        inner = d.findChild(QScrollArea)
+        assert inner is not None and inner.widget().findChildren(QPushButton)      # הכפתורים עברו לאזור הגלילה
+        assert not fit_dialog(d, small)                                   # פעם אחת מספיקה
+        big = LicenseDialog(w)
+        assert not fit_dialog(big, QSize(1900, 1000)) and big.findChild(QScrollArea) is None   # במסך גדול - בלי שינוי
+    finally:
+        w.dirty = False
+        w.close()
