@@ -3,8 +3,9 @@ from ..i18n import tx, is_rtl
 from ..i18n import direction
 import traceback
 
-from PySide6.QtCore import Qt, QThread, Signal
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QMessageBox
+from PySide6.QtCore import Qt, QThread, Signal, QObject, QEvent, QSize
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QMessageBox, QScrollArea,
+                               QDialog, QApplication)
 
 from ..audio.fileio import AudioError
 from ..log import log_error
@@ -22,7 +23,7 @@ QPushButton:hover { background: #2a4d7c; }
 QPushButton:pressed { background: #182e4c; }
 QPushButton:disabled { background: #b4bcc6; color: #eef1f4; }
 QPushButton:focus { outline: none; }
-QPushButton#huge { font-size: 30px; padding: 10px; min-height: 160px; min-width: 380px; border-radius: 24px; }
+QPushButton#huge { font-size: 30px; padding: 10px; min-height: 160px; min-width: 260px; border-radius: 24px; }
 QPushButton#red { background: #b3392f; }
 QPushButton#red:hover { background: #c9463b; }
 QPushButton#green { background: #2e7d4f; }
@@ -57,6 +58,9 @@ QSlider::handle:horizontal { width: 26px; margin: -9px 0; border-radius: 13px; b
 QScrollBar:vertical { width: 14px; background: transparent; }
 QScrollBar::handle:vertical { background: #cfc8ba; border-radius: 7px; min-height: 40px; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+QScrollBar:horizontal { height: 14px; background: transparent; }
+QScrollBar::handle:horizontal { background: #cfc8ba; border-radius: 7px; min-width: 40px; }
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
 QToolTip { background: #1f3a5f; color: white; border: none; padding: 6px 10px; font-size: 16px; }
 QWidget#steps { background: white; border-bottom: 2px solid #e6e0d3; }
 QLabel#step { font-size: 18px; color: #8a94a0; padding: 10px 6px; }
@@ -89,6 +93,61 @@ def label(text, name=None):
     if name:
         l.setObjectName(name)
     return l
+
+
+def scroll_box(widget):
+    """עוטף מסך באזור גלילה: במסך קטן (מחשב נייד, הגדלת כתב ב-Windows) מופיע פס גלילה, ושום כפתור לא נחתך."""
+    sc = QScrollArea()
+    sc.setWidgetResizable(True)
+    sc.setFrameShape(QScrollArea.NoFrame)
+    sc.setWidget(widget)
+    return sc
+
+
+def screen_room(widget=None):
+    """כמה מקום יש על המסך לחלון (בלי שורת המשימות), עם שוליים קטנים למסגרת החלון."""
+    scr = (widget.screen() if widget is not None else None) or QApplication.primaryScreen()
+    if scr is None:
+        return QSize(1000, 760)
+    g = scr.availableGeometry()
+    return QSize(max(480, g.width() - 16), max(360, g.height() - 48))
+
+
+def fit_dialog(dlg, room=None):
+    """חלון שגבוה או רחב מהמסך: התוכן שלו עובר לאזור גלילה והחלון מוקטן לגודל המסך.
+    מחזיר True אם החלון הותאם."""
+    room = room or screen_room(dlg)
+    lay = dlg.layout()
+    if lay is None or dlg.property("fitted"):
+        return False
+    need = lay.totalMinimumSize().expandedTo(dlg.minimumSize())
+    if need.width() <= room.width() and need.height() <= room.height():
+        if dlg.width() > room.width() or dlg.height() > room.height():
+            dlg.resize(min(dlg.width(), room.width()), min(dlg.height(), room.height()))
+        return False
+    dlg.setProperty("fitted", True)
+    inner = QWidget()
+    inner.setLayout(lay)                      # התוכן כולו עובר לתוך אזור הגלילה
+    inner.setMinimumSize(dlg.minimumSize())
+    dlg.setMinimumSize(0, 0)
+    outer = QVBoxLayout(dlg)
+    outer.setContentsMargins(0, 0, 0, 0)
+    outer.addWidget(scroll_box(inner))
+    dlg.resize(min(max(dlg.width(), need.width() + 24), room.width()),
+               min(max(dlg.height(), need.height() + 24), room.height()))
+    return True
+
+
+class FitDialogs(QObject):
+    """מותקן על התוכנה כולה: כל חלון משני שנפתח נבדק מול גודל המסך (fit_dialog)."""
+
+    def eventFilter(self, obj, ev):
+        if ev.type() == QEvent.Show and isinstance(obj, QDialog) and not isinstance(obj, QMessageBox):
+            try:
+                fit_dialog(obj)
+            except RuntimeError:
+                pass
+        return False
 
 
 STEPS = (tx("הקלטה או קובץ"), tx("בחירת סגנון"), tx("השיר מוכן"))
